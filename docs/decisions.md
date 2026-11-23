@@ -23,6 +23,10 @@
 - **Decision**: Use `react-native-gifted-charts` (`react-native-svg` + `expo-linear-gradient`) instead of `victory-native` (Skia).
 - **Rationale**: Smaller native binary size, lower GPU memory footprint on budget Android devices, and simpler RTL bar/donut configuration.
 
+## ADR-006: Passwordless Read-Only Community Viewer & Admin-Only Authentication
+- **Decision**: Normal community members open the app directly into a full-register **Read-Only Viewer** without needing an email, password, or Auth account (`anon` role granted `SELECT` only via `20261123000006_public_readonly_viewer.sql`). Only Admins authenticate with email/password to unlock write actions.
+- **Offline Benefit**: Regular members are created directly in `profiles` via `localInsert` (100% offline-capable, zero Edge Function or Auth account required), while `pull_changes()` allows viewers to download and browse the entire community register offline. `audit_log` and all write operations remain strictly locked to authenticated Admins in Postgres RLS.
+
 ## Assumptions
 1. **Default Fiscal Year**: `org_settings.fiscal_year_start_month` defaults to `1` (calendar year Jan–Dec) and is configurable by admins anytime.
 2. **Timezone**: All cycle boundaries and "current month" evaluations use `Asia/Karachi` (`UTC+5`, no DST).

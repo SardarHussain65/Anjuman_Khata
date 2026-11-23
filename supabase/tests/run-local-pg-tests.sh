@@ -42,6 +42,7 @@ PSQL="$PG_BIN/psql -h $TMP_DIR/sock -U postgres -v ON_ERROR_STOP=1"
 
 # Minimal Supabase auth schema & roles shim matching hosted Supabase Postgres
 $PSQL <<'SQL'
+CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
 CREATE ROLE service_role NOLOGIN BYPASSRLS;
 CREATE SCHEMA IF NOT EXISTS auth;
@@ -52,8 +53,8 @@ STABLE
 AS $$
   SELECT NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub', '')::uuid;
 $$;
-GRANT USAGE ON SCHEMA public, auth TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, service_role;
+GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO authenticated, service_role;
 SQL

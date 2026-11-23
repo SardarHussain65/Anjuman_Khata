@@ -237,49 +237,42 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- TEST 4: RLS as Standard User (own-row read-only, zero writes, no others' Zakat assets)
+-- TEST 4: Public Read-Only Viewer (`anon`) & Non-Admin (`user`):
+-- Can read community register cleanly, ZERO access to audit_log, ZERO writes!
 -- =============================================================================
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"bbbbbbbb-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SET LOCAL ROLE anon;
+SELECT set_config('request.jwt.claims', '{}', true);
 
 DO $$
 DECLARE
   v_count int;
   v_pull jsonb;
-  v_push jsonb;
   v_caught boolean := false;
 BEGIN
-  -- Can read own profile ONLY (not Admin or Member Two)
+  -- Viewer can read full register (all profiles, contributions, zakat)
   SELECT count(*) INTO v_count FROM public.profiles;
-  IF v_count <> 1 THEN
-    RAISE EXCEPTION 'FAIL TEST 4a: standard user saw % profiles (expected 1)', v_count;
+  IF v_count < 3 THEN
+    RAISE EXCEPTION 'FAIL TEST 4a: public viewer expected >=3 profiles, saw %', v_count;
   END IF;
 
-  -- Cannot read Member Two's contributions
-  SELECT count(*) INTO v_count FROM public.contributions WHERE member_id = 'bbbbbbbb-0000-0000-0000-000000000002'::uuid;
-  IF v_count <> 0 THEN
-    RAISE EXCEPTION 'FAIL TEST 4b: standard user read another member contributions';
+  -- Viewer can pull changes offline via pull_changes()
+  v_pull := public.pull_changes(NULL, ARRAY['profiles', 'contributions', 'zakat_assessments']);
+  IF jsonb_array_length(v_pull->'changes'->'profiles') < 3 THEN
+    RAISE EXCEPTION 'FAIL TEST 4b: public viewer pull_changes missing profiles: %', v_pull;
   END IF;
 
-  -- Cannot read Member Two's sensitive zakat_assessments (assets)
-  SELECT count(*) INTO v_count FROM public.zakat_assessments;
-  IF v_count <> 0 THEN
-    RAISE EXCEPTION 'FAIL TEST 4c: standard user read another member zakat assets (%)', v_count;
+  -- Viewer CANNOT read audit_log
+  BEGIN
+    SELECT count(*) INTO v_count FROM public.audit_log;
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL TEST 4c: anon viewer could query audit_log!';
   END IF;
 
-  -- Cannot read audit_log
-  SELECT count(*) INTO v_count FROM public.audit_log;
-  IF v_count <> 0 THEN
-    RAISE EXCEPTION 'FAIL TEST 4d: standard user read audit_log (%)', v_count;
-  END IF;
-
-  -- Can read shared config (tiers, org_settings, fiscal_years, zakat_settings)
-  SELECT count(*) INTO v_count FROM public.tiers;
-  IF v_count < 2 THEN
-    RAISE EXCEPTION 'FAIL TEST 4e: standard user could not read tiers';
-  END IF;
-
-  -- Cannot write to contributions
+  -- Viewer CANNOT write to contributions
+  v_caught := false;
   BEGIN
     INSERT INTO public.contributions (member_id, amount, period_start, kind, paid_on)
     VALUES ('bbbbbbbb-0000-0000-0000-000000000001'::uuid, 200, '2026-02-01', 'monthly', '2026-02-01');
@@ -287,24 +280,54 @@ BEGIN
     v_caught := true;
   END;
   IF NOT v_caught THEN
-    RAISE EXCEPTION 'FAIL TEST 4f: standard user inserted contribution!';
+    RAISE EXCEPTION 'FAIL TEST 4d: anon viewer inserted contribution!';
   END IF;
 
-  -- Cannot escalate own role to admin
+  -- Viewer CANNOT call push_changes()
+  v_caught := false;
+  BEGIN
+    PERFORM public.push_changes('[]'::jsonb);
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL TEST 4e: anon viewer executed push_changes()!';
+  END IF;
+END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"bbbbbbbb-0000-0000-0000-000000000001","role":"authenticated"}', true);
+
+DO $$
+DECLARE
+  v_count int;
+  v_push jsonb;
+  v_caught boolean := false;
+BEGIN
+  -- Non-admin cannot read audit_log
+  SELECT count(*) INTO v_count FROM public.audit_log;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL TEST 4f: non-admin user read audit_log (%)', v_count;
+  END IF;
+
+  -- Non-admin cannot write to contributions
+  BEGIN
+    INSERT INTO public.contributions (member_id, amount, period_start, kind, paid_on)
+    VALUES ('bbbbbbbb-0000-0000-0000-000000000001'::uuid, 200, '2026-02-01', 'monthly', '2026-02-01');
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL TEST 4g: non-admin user inserted contribution!';
+  END IF;
+
+  -- Non-admin cannot escalate own role to admin
   UPDATE public.profiles SET role = 'admin' WHERE id = 'bbbbbbbb-0000-0000-0000-000000000001'::uuid;
   IF public.is_admin() THEN
-    RAISE EXCEPTION 'FAIL TEST 4g: standard user escalated role to admin!';
+    RAISE EXCEPTION 'FAIL TEST 4h: non-admin escalated role to admin!';
   END IF;
 
-  -- pull_changes() is SECURITY INVOKER -> strictly returns own subset
-  v_pull := public.pull_changes(NULL, ARRAY['profiles', 'contributions', 'zakat_assessments']);
-  IF jsonb_array_length(v_pull->'changes'->'profiles') <> 1
-     OR jsonb_array_length(v_pull->'changes'->'contributions') <> 1
-     OR jsonb_array_length(v_pull->'changes'->'zakat_assessments') <> 0 THEN
-    RAISE EXCEPTION 'FAIL TEST 4h: pull_changes leaked rows to standard user: %', v_pull;
-  END IF;
-
-  -- push_changes() rejects standard user writes via RLS
+  -- push_changes() rejects non-admin writes via RLS
   v_push := public.push_changes(jsonb_build_array(
     jsonb_build_object(
       'outbox_id', 'u-try-1',
@@ -321,10 +344,10 @@ BEGIN
     )
   ));
   IF (v_push->'results'->0->>'status') <> 'rejected' THEN
-    RAISE EXCEPTION 'FAIL TEST 4i: push_changes allowed standard user write: %', v_push;
+    RAISE EXCEPTION 'FAIL TEST 4i: push_changes allowed non-admin write: %', v_push;
   END IF;
 
-  RAISE NOTICE 'PASS TEST 4: Standard user RLS isolation, read-only enforcement, and SECURITY INVOKER RPCs';
+  RAISE NOTICE 'PASS TEST 4: Public read-only viewer & non-admin write/audit lock enforced by RLS';
 END $$;
 
 -- =============================================================================
