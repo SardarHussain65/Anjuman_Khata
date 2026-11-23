@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
+import { SyncStatusPill } from '@/data/sync/SyncStatusUI';
 
 export default function AdminTabsLayout() {
   const { colors } = useTheme();
@@ -14,6 +15,7 @@ export default function AdminTabsLayout() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerShadowVisible: false,
+        headerRight: () => <SyncStatusPill />,
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,

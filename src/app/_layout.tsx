@@ -9,6 +9,8 @@ import { hydrateLanguagePreference } from '@/core/i18n';
 import { ThemeProvider, useTheme } from '@/core/theme/ThemeProvider';
 import { AppErrorBoundary, LoadingState } from '@/core/ui/ScreenState';
 import { useAuthStore } from '@/features/auth/store/authStore';
+import { useSyncScheduler } from '@/data/sync/scheduler';
+import { InitialSyncBanner, SyncDrawerModal } from '@/data/sync/SyncStatusUI';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,17 +35,20 @@ function RootNavigator() {
     });
   }, [hydrate]);
 
-  if (!langReady || isHydrating) {
-    return <LoadingState />;
-  }
-
   const isAuthenticated = Boolean(session && profile);
   const isAdmin = isAuthenticated && profile?.role === 'admin';
   const isStandardUser = isAuthenticated && profile?.role === 'user';
 
+  useSyncScheduler(langReady && !isHydrating && isAuthenticated);
+
+  if (!langReady || isHydrating) {
+    return <LoadingState />;
+  }
+
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      <InitialSyncBanner />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Protected guard={!isAuthenticated}>
@@ -56,6 +61,7 @@ function RootNavigator() {
           <Stack.Screen name="(admin)" />
         </Stack.Protected>
       </Stack>
+      <SyncDrawerModal />
     </>
   );
 }
