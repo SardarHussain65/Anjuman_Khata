@@ -36,7 +36,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
+    "test:sql": "bash supabase/tests/run-local-pg-tests.sh"
   },
   "private": true
 }
