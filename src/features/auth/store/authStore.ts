@@ -28,9 +28,16 @@ interface AuthState {
   profile: AuthProfile | null;
   isOfflineSession: boolean;
   error: string | null;
+  devDetail: string | null;
 
   hydrate: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<{ ok: boolean; errorCode?: 'invalid' | 'offline' | 'generic' }>;
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{
+    ok: boolean;
+    errorCode?: 'invalid' | 'profile_missing' | 'offline' | 'generic';
+  }>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
@@ -54,7 +61,9 @@ async function loadCachedProfile(): Promise<AuthProfile | null> {
   }
 }
 
-async function fetchRemoteProfile(userId: string): Promise<AuthProfile | null> {
+async function fetchRemoteProfile(
+  userId: string,
+): Promise<{ profile: AuthProfile | null; detail?: string }> {
   const { data, error } = await supabase
     .from('profiles')
     .select(
@@ -64,8 +73,19 @@ async function fetchRemoteProfile(userId: string): Promise<AuthProfile | null> {
     .is('deleted_at', null)
     .maybeSingle();
 
-  if (error || !data) return null;
-  return data as AuthProfile;
+  if (error) {
+    if (__DEV__) {
+      console.warn('[Auth] fetchRemoteProfile error:', error.message);
+    }
+    return { profile: null, detail: `profiles query: ${error.message}` };
+  }
+  if (!data) {
+    if (__DEV__) {
+      console.warn('[Auth] No profile row found in public.profiles for user id:', userId);
+    }
+    return { profile: null, detail: `No row in public.profiles for id=${userId}` };
+  }
+  return { profile: data as AuthProfile };
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -75,9 +95,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   isOfflineSession: false,
   error: null,
+  devDetail: null,
 
   hydrate: async () => {
-    set({ isHydrating: true, error: null });
+    set({ isHydrating: true, error: null, devDetail: null });
     try {
       // 1. Read persisted session + cached profile immediately (works 100% offline!)
       const [{ data }, cachedProfile, netState] = await Promise.all([
@@ -112,7 +133,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Silently refresh profile in background if online
         if (online) {
           fetchRemoteProfile(session.user.id)
-            .then(async (fresh) => {
+            .then(async ({ profile: fresh }) => {
               if (fresh) {
                 await saveCachedProfile(fresh);
                 set({ profile: fresh, isOfflineSession: false });
@@ -125,7 +146,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // First-time hydration without cached profile
       if (online) {
-        const remote = await fetchRemoteProfile(session.user.id);
+        const { profile: remote } = await fetchRemoteProfile(session.user.id);
         if (remote) {
           await saveCachedProfile(remote);
           set({
@@ -155,11 +176,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signIn: async (email: string, password: string) => {
-    set({ isSigningIn: true, error: null });
+    set({ isSigningIn: true, error: null, devDetail: null });
     try {
       const netState = await NetInfo.fetch().catch(() => ({ isConnected: true }));
       if (netState.isConnected === false) {
-        set({ isSigningIn: false, error: 'offline' });
+        set({ isSigningIn: false, error: 'offline', devDetail: 'NetInfo reports offline' });
         return { ok: false, errorCode: 'offline' };
       }
 
@@ -169,15 +190,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       if (error || !data.session) {
-        set({ isSigningIn: false, error: 'invalid' });
+        const detail = error?.message ?? 'No session returned';
+        if (__DEV__) {
+          console.warn('[Auth] signInWithPassword error:', detail);
+        }
+        set({ isSigningIn: false, error: 'invalid', devDetail: detail });
         return { ok: false, errorCode: 'invalid' };
       }
 
-      const profile = await fetchRemoteProfile(data.session.user.id);
+      const { profile, detail } = await fetchRemoteProfile(data.session.user.id);
       if (!profile) {
-        await supabase.auth.signOut();
-        set({ isSigningIn: false, error: 'invalid' });
-        return { ok: false, errorCode: 'invalid' };
+        await supabase.auth.signOut({ scope: 'local' });
+        set({ isSigningIn: false, error: 'profile_missing', devDetail: detail ?? null });
+        return { ok: false, errorCode: 'profile_missing' };
       }
 
       await saveCachedProfile(profile);
@@ -187,10 +212,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile,
         isOfflineSession: false,
         error: null,
+        devDetail: null,
       });
       return { ok: true };
-    } catch {
-      set({ isSigningIn: false, error: 'generic' });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      set({ isSigningIn: false, error: 'generic', devDetail: detail });
       return { ok: false, errorCode: 'generic' };
     }
   },
@@ -199,7 +226,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const session = get().session;
     if (!session) return;
     try {
-      const fresh = await fetchRemoteProfile(session.user.id);
+      const { profile: fresh } = await fetchRemoteProfile(session.user.id);
       if (fresh) {
         await saveCachedProfile(fresh);
         set({ profile: fresh, isOfflineSession: false });
@@ -221,8 +248,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profile: null,
       isOfflineSession: false,
       error: null,
+      devDetail: null,
     });
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, devDetail: null }),
 }));

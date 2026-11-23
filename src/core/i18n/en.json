@@ -45,10 +45,13 @@
     "password": "Password",
     "passwordPlaceholder": "Enter your password",
     "signInButton": "Sign In",
+    "adminLogin": "Admin Login",
+    "adminLoginSubtitle": "Only committee admins need to sign in to record payments or manage members.",
     "signingIn": "Signing in…",
     "signOut": "Sign Out",
     "signOutConfirm": "You can sign back in when connected. Unsynced offline changes stay queued on this device.",
     "invalidCredentials": "Incorrect email or password. Please check and try again.",
+    "profileMissing": "Signed in, but no member profile was found for this account. Please add a profile row in Supabase or contact an admin.",
     "offlineLoginError": "You are offline. Connect to the internet for your first sign-in.",
     "offlineSessionNotice": "Working offline with your saved session."
   },

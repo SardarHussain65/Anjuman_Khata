@@ -13,9 +13,10 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/core/theme/ThemeProvider';
-import { getCurrentLanguage, switchLanguage } from '@/core/i18n';
+import { switchLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
@@ -30,12 +31,14 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginScreen() {
   const { colors, radius } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
   const isSigningIn = useAuthStore((s) => s.isSigningIn);
   const authError = useAuthStore((s) => s.error);
+  const devDetail = useAuthStore((s) => s.devDetail);
   const clearError = useAuthStore((s) => s.clearError);
-  const currentLang = getCurrentLanguage();
+  const currentLang = i18n.language === 'ur' ? 'ur' : 'en';
 
   const {
     control,
@@ -54,11 +57,13 @@ export function LoginScreen() {
   const errorMessage =
     authError === 'offline'
       ? t('auth.offlineLoginError')
-      : authError === 'invalid'
-        ? t('auth.invalidCredentials')
-        : authError
-          ? t('common.errorGeneric')
-          : null;
+      : authError === 'profile_missing'
+        ? t('auth.profileMissing')
+        : authError === 'invalid'
+          ? t('auth.invalidCredentials')
+          : authError
+            ? t('common.errorGeneric')
+            : null;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -70,13 +75,25 @@ export function LoginScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Language Switcher Pill */}
+          {/* Top Row: Back to Register + EN | اردو Language Toggle */}
           <View style={styles.topRow}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => switchLanguage(currentLang === 'en' ? 'ur' : 'en')}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(user)'))}
               style={[
-                styles.langPill,
+                styles.backPill,
+                { backgroundColor: colors.surface, borderColor: colors.borderStrong, borderRadius: radius.pill },
+              ]}
+            >
+              <Ionicons name="arrow-back" size={16} color={colors.text} />
+              <Text style={[styles.langText, { color: colors.text }]}>
+                {t('common.close')}
+              </Text>
+            </Pressable>
+
+            <View
+              style={[
+                styles.langToggle,
                 {
                   backgroundColor: colors.surface,
                   borderColor: colors.borderStrong,
@@ -84,11 +101,34 @@ export function LoginScreen() {
                 },
               ]}
             >
-              <Ionicons name="language-outline" size={16} color={colors.primary} />
-              <Text style={[styles.langText, { color: colors.text }]}>
-                {currentLang === 'en' ? 'اردو' : 'English'}
-              </Text>
-            </Pressable>
+              {(['en', 'ur'] as const).map((code) => {
+                const active = currentLang === code;
+                return (
+                  <Pressable
+                    key={code}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => void switchLanguage(code)}
+                    style={[
+                      styles.langOption,
+                      {
+                        backgroundColor: active ? colors.primary : 'transparent',
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.langText,
+                        { color: active ? '#FFFFFF' : colors.textSecondary },
+                      ]}
+                    >
+                      {code === 'en' ? 'English' : 'اردو'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
 
           {/* Brand Emblem */}
@@ -128,6 +168,7 @@ export function LoginScreen() {
                 <Ionicons name="alert-circle" size={18} color={colors.danger} />
                 <Text style={[styles.errorText, { color: colors.danger }]}>
                   {errorMessage}
+                  {__DEV__ && devDetail ? `\n[DEV] ${devDetail}` : ''}
                 </Text>
               </View>
             ) : null}
@@ -192,21 +233,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topRow: {
-    alignItems: 'flex-end',
-    marginBottom: 24,
-  },
-  langPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  backPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1,
     minHeight: 40,
   },
+  langToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 3,
+    borderWidth: 1,
+    gap: 4,
+  },
+  langOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    minHeight: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   langText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   brandBlock: {
     alignItems: 'center',
