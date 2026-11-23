@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
@@ -42,6 +43,7 @@ const TOTAL_COL_WIDTH = 82;
 export function AdminLedgerScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
+  const router = useRouter();
   const lang = getCurrentLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
@@ -146,31 +148,41 @@ export function AdminLedgerScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       {/* Fiscal Year Pills + Search */}
       <View style={[styles.topControls, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fyRow}>
-          {(data?.fiscalYears ?? []).map((fy) => {
-            const active = fy.id === activeFy?.id;
-            return (
-              <Pressable
-                key={fy.id}
-                onPress={() => setSelectedFyId(fy.id)}
-                style={[
-                  styles.fyPill,
-                  {
-                    backgroundColor: active ? colors.primary : colors.surfaceSubtle,
-                    borderRadius: radius.pill,
-                  },
-                ]}
-              >
-                {fy.status === 'closed' ? (
-                  <Ionicons name="lock-closed" size={12} color={active ? '#FFFFFF' : colors.textMuted} />
-                ) : null}
-                <Text style={[styles.fyPillText, { color: active ? '#FFFFFF' : colors.text }]}>
-                  {fy.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.topRowWithExport}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fyRow}>
+            {(data?.fiscalYears ?? []).map((fy) => {
+              const active = fy.id === activeFy?.id;
+              return (
+                <Pressable
+                  key={fy.id}
+                  onPress={() => setSelectedFyId(fy.id)}
+                  style={[
+                    styles.fyPill,
+                    {
+                      backgroundColor: active ? colors.primary : colors.surfaceSubtle,
+                      borderRadius: radius.pill,
+                    },
+                  ]}
+                >
+                  {fy.status === 'closed' ? (
+                    <Ionicons name="lock-closed" size={12} color={active ? '#FFFFFF' : colors.textMuted} />
+                  ) : null}
+                  <Text style={[styles.fyPillText, { color: active ? '#FFFFFF' : colors.text }]}>
+                    {fy.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/(admin)/reports')}
+            style={[styles.exportChip, { backgroundColor: colors.primarySoft, borderRadius: radius.pill }]}
+          >
+            <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+            <Text style={[styles.fyPillText, { color: colors.primary }]}>PDF</Text>
+          </Pressable>
+        </View>
 
         <View
           style={[
@@ -439,6 +451,18 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 8,
     borderBottomWidth: 1,
+  },
+  topRowWithExport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exportChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   fyRow: { gap: 8 },
   fyPill: {

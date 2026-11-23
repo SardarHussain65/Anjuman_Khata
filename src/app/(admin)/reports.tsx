@@ -1,8 +1,6 @@
 import React from 'react';
-import { EmptyState } from '@/core/ui/ScreenState';
-import { useTranslation } from 'react-i18next';
+import { AdminReportsScreen } from '@/features/reports/screens/AdminReportsScreen';
 
 export default function AdminReportsRoute() {
-  const { t } = useTranslation();
-  return <EmptyState title={t('reports.title')} icon="document-text-outline" />;
+  return <AdminReportsScreen />;
 }
