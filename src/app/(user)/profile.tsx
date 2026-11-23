@@ -1,6 +1,6 @@
 import React from 'react';
-import { UserProfileScreen } from '@/features/members/screens/UserProfileScreen';
+import { ViewerMoreScreen } from '@/features/members/screens/ViewerMoreScreen';
 
-export default function UserProfileRoute() {
-  return <UserProfileScreen />;
+export default function ViewerMoreRoute() {
+  return <ViewerMoreScreen />;
 }

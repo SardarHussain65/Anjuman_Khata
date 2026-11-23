@@ -1,6 +1,6 @@
 import React from 'react';
-import { UserDashboardScreen } from '@/features/dashboard/screens/UserDashboardScreen';
+import { ViewerLedgerScreen } from '@/features/ledger/screens/ViewerLedgerScreen';
 
-export default function UserDashboardRoute() {
-  return <UserDashboardScreen />;
+export default function ViewerLedgerRoute() {
+  return <ViewerLedgerScreen />;
 }

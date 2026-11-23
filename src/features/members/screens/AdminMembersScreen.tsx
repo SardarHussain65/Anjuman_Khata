@@ -188,16 +188,18 @@ export function AdminMembersScreen() {
                   </Pressable>
                 ) : null}
 
-                <Pressable
-                  onPress={() => {
-                    setResetMember(item);
-                    setNewPassword('');
-                  }}
-                  style={[styles.miniBtn, { borderColor: colors.border, borderRadius: radius.sm }]}
-                >
-                  <Ionicons name="key-outline" size={14} color={colors.textSecondary} />
-                  <Text style={[styles.miniBtnText, { color: colors.textSecondary }]}>{t('members.resetPassword')}</Text>
-                </Pressable>
+                {item.role === 'admin' ? (
+                  <Pressable
+                    onPress={() => {
+                      setResetMember(item);
+                      setNewPassword('');
+                    }}
+                    style={[styles.miniBtn, { borderColor: colors.border, borderRadius: radius.sm }]}
+                  >
+                    <Ionicons name="key-outline" size={14} color={colors.textSecondary} />
+                    <Text style={[styles.miniBtnText, { color: colors.textSecondary }]}>{t('members.resetPassword')}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </Card>
           );

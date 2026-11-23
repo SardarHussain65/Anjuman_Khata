@@ -135,11 +135,21 @@ function MemberFormModalInner({
             { actorId: adminId },
           );
         }
-      } else if (isOnline) {
-        // Online creation via verified admin-create-user Edge Function (Auth user + profile atomically)
+      } else if (role === 'admin') {
+        if (!isOnline) {
+          Alert.alert(t('common.offline'), 'Creating a new Admin login account requires internet.');
+          setSaving(false);
+          return;
+        }
+        if (!email.trim() || password.trim().length < 6) {
+          Alert.alert(t('common.required'), 'Admin accounts require an email and password (min 6 chars).');
+          setSaving(false);
+          return;
+        }
+        // Admin account creation via verified Edge Function (Auth user + admin profile atomically)
         const res = await invokeAdminCreateMember({
-          email: email.trim() || undefined,
-          password: password.trim() || undefined,
+          email: email.trim(),
+          password: password.trim(),
           member_no: parsedNo,
           full_name: fullName.trim(),
           full_name_ur: fullNameUr.trim() || null,
@@ -147,7 +157,7 @@ function MemberFormModalInner({
           designation: designation.trim() || null,
           tag: tag.trim() || null,
           status,
-          role,
+          role: 'admin',
           personal_pledge: parsedPledge,
           joined_on: getKarachiToday(),
           notes: notes.trim() || null,
@@ -168,7 +178,7 @@ function MemberFormModalInner({
         });
         notifyTablesChanged(['profiles', 'member_tiers']);
       } else {
-        // Offline directory member creation (syncs to Postgres on reconnect; login can be provisioned later)
+        // Normal community member: NO email/password/auth account needed! Works 100% offline & online.
         const created = await localInsert(
           'profiles',
           {
@@ -179,7 +189,7 @@ function MemberFormModalInner({
             designation: designation.trim() || null,
             tag: tag.trim() || null,
             status,
-            role,
+            role: 'user',
             personal_pledge: parsedPledge,
             joined_on: getKarachiToday(),
             notes: notes.trim() || null,
@@ -194,7 +204,7 @@ function MemberFormModalInner({
               member_id: created.id,
               tier_id: tierId,
               effective_from: effectiveFrom,
-              reason: 'Initial tier assignment (offline)',
+              reason: 'Initial tier assignment',
             },
             { actorId: adminId },
           );
@@ -350,15 +360,17 @@ function MemberFormModalInner({
               </View>
             ) : null}
 
-            {/* Role selector */}
+            {/* Role selector (prevent admin from accidentally demoting themselves) */}
             <View style={styles.group}>
               <Text style={[styles.label, { color: colors.text }]}>Role</Text>
               <View style={styles.row}>
                 {(['user', 'admin'] as const).map((r) => {
                   const active = role === r;
+                  const isSelfDemote = isEdit && editingMember?.id === adminId && r === 'user';
                   return (
                     <Pressable
                       key={r}
+                      disabled={isSelfDemote}
                       onPress={() => setRole(r)}
                       style={[
                         styles.chip,
@@ -366,6 +378,7 @@ function MemberFormModalInner({
                           backgroundColor: active ? colors.primary : colors.surface,
                           borderColor: active ? colors.primary : colors.borderStrong,
                           borderRadius: radius.md,
+                          opacity: isSelfDemote ? 0.45 : 1,
                         },
                       ]}
                     >
@@ -376,6 +389,11 @@ function MemberFormModalInner({
                   );
                 })}
               </View>
+              {isEdit && editingMember?.id === adminId ? (
+                <Text style={[styles.helper, { color: colors.textMuted }]}>
+                  You cannot remove your own admin role.
+                </Text>
+              ) : null}
             </View>
 
             <TextField
@@ -386,22 +404,22 @@ function MemberFormModalInner({
               placeholder="1000"
             />
 
-            {!isEdit && isOnline ? (
+            {!isEdit && role === 'admin' ? (
               <>
                 <TextField
-                  label={`${t('auth.email')} (${t('common.optional')})`}
+                  label={t('auth.email')}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
                   onChangeText={setEmail}
-                  placeholder={`member${memberNo}@anjumankhata.local`}
+                  placeholder="admin@example.com"
                 />
                 <TextField
-                  label={`${t('auth.password')} (${t('common.optional')})`}
+                  label={t('auth.password')}
                   secureTextEntry
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="Auto-generated if empty"
+                  placeholder="Min 6 characters"
                 />
               </>
             ) : null}

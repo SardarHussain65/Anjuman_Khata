@@ -1,6 +1,6 @@
 import React from 'react';
-import { UserZakatScreen } from '@/features/zakat/screens/UserZakatScreen';
+import { ViewerZakatScreen } from '@/features/zakat/screens/ViewerZakatScreen';
 
-export default function UserZakatRoute() {
-  return <UserZakatScreen />;
+export default function ViewerZakatRoute() {
+  return <ViewerZakatScreen />;
 }

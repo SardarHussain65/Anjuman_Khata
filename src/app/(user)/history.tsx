@@ -1,6 +1,6 @@
 import React from 'react';
-import { UserHistoryScreen } from '@/features/history/screens/UserHistoryScreen';
+import { ViewerMembersScreen } from '@/features/members/screens/ViewerMembersScreen';
 
-export default function UserHistoryRoute() {
-  return <UserHistoryScreen />;
+export default function ViewerMembersRoute() {
+  return <ViewerMembersScreen />;
 }

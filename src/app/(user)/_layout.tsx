@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { SyncStatusPill } from '@/data/sync/SyncStatusUI';
 
-export default function UserTabsLayout() {
+export default function ViewerTabsLayout() {
   const { colors } = useTheme();
   const { t } = useTranslation();
 
@@ -30,18 +30,18 @@ export default function UserTabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: t('tabs.home'),
+          title: t('tabs.ledger'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
+            <Ionicons name="grid-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
           ),
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
-          title: t('tabs.history'),
+          title: t('tabs.members'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="receipt-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
+            <Ionicons name="people-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
           ),
         }}
       />
@@ -58,9 +58,9 @@ export default function UserTabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: t('tabs.profile'),
+          title: t('tabs.more'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
+            <Ionicons name="menu-outline" size={size} color={typeof color === 'string' ? color : colors.textMuted} />
           ),
         }}
       />
