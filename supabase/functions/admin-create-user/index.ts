@@ -51,10 +51,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: 'Server configuration incomplete' }, 500);
   }
 
@@ -62,26 +61,24 @@ Deno.serve(async (req: Request) => {
   if (!authHeader?.startsWith('Bearer ')) {
     return jsonResponse({ error: 'Missing Authorization header' }, 401);
   }
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  // 1. Verify caller identity using user-scoped client
-  const callerClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
+  // 1. Verify caller identity & admin role using server-side service client
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    ...(serviceRoleKey.startsWith('eyJ')
+      ? { global: { headers: { Authorization: `Bearer ${serviceRoleKey}` } } }
+      : {}),
   });
 
   const {
     data: { user: caller },
     error: callerError,
-  } = await callerClient.auth.getUser();
+  } = await adminClient.auth.getUser(token);
 
   if (callerError || !caller) {
-    return jsonResponse({ error: 'Invalid or expired session' }, 401);
+    return jsonResponse({ error: callerError?.message ?? 'Invalid or expired session' }, 401);
   }
-
-  // 2. Verify caller is an active admin using service client
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 
   const { data: callerProfile, error: profileCheckError } = await adminClient
     .from('profiles')
@@ -89,8 +86,21 @@ Deno.serve(async (req: Request) => {
     .eq('id', caller.id)
     .maybeSingle();
 
-  if (profileCheckError || !callerProfile || callerProfile.deleted_at || callerProfile.role !== 'admin') {
-    return jsonResponse({ error: 'Forbidden: admin role required' }, 403);
+  if (profileCheckError) {
+    console.error('[admin-create-user] profile check error:', profileCheckError);
+    return jsonResponse(
+      { error: `Admin check query failed: ${profileCheckError.message}` },
+      500,
+    );
+  }
+
+  if (!callerProfile || callerProfile.deleted_at || callerProfile.role !== 'admin') {
+    return jsonResponse(
+      {
+        error: `Forbidden: admin role required (caller=${caller.id}, found=${Boolean(callerProfile)}, role=${callerProfile?.role ?? 'none'})`,
+      },
+      403,
+    );
   }
 
   let body: CreateMemberRequest;
@@ -150,7 +160,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'personal_pledge must be a positive integer PKR amount' }, 400);
   }
 
-  const email = body.email?.trim().toLowerCase() || `member${memberNo}@anjumankhata.local`;
+  const email = body.email?.trim().toLowerCase() || `member${memberNo}@anjumankhata.app`;
   const password = body.password && body.password.length >= 6
     ? body.password
     : crypto.randomUUID().replace(/-/g, '').slice(0, 14);

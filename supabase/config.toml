@@ -11,7 +11,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 16
+major_version = 17
 
 [db.seed]
 enabled = true
@@ -27,7 +27,7 @@ site_url = "anjumankhata://auth"
 enable_signup = false
 
 [auth.email]
-enable_signup = true
+enabled = true
 double_confirm_changes = false
 enable_confirmations = false
 
