@@ -24,8 +24,7 @@ cp .env.example .env
 2. Link and push migrations + seed:
    ```bash
    supabase link --project-ref <your-project-ref>
-   supabase db push
-   psql "$DATABASE_URL" -f supabase/seed.sql
+   supabase db push --remote --include-seed
    ```
 3. Deploy the admin Edge Function:
    ```bash
