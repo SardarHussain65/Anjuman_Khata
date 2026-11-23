@@ -64,6 +64,22 @@ export default function AdminTabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="history-viewer"
+        options={{ href: null, title: t('history.title') }}
+      />
+      <Tabs.Screen
+        name="org-settings"
+        options={{ href: null, title: t('settings.organization') }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{ href: null, title: t('reports.title') }}
+      />
+      <Tabs.Screen
+        name="audit-log"
+        options={{ href: null, title: t('settings.auditLog') }}
+      />
     </Tabs>
   );
 }
