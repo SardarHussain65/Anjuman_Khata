@@ -2,6 +2,7 @@ import { assertIntegerPKR } from '../money';
 import {
   ZakatAssessmentRow,
   ZakatAssetsBreakdown,
+  ZakatMemberRow,
   ZakatPaymentRow,
 } from '@/data/db/types';
 
@@ -134,6 +135,72 @@ export function computeMemberZakatYearSummary(
     paidAmount,
     balance: dueAmount - paidAmount,
     assessments: memberAssessments,
+    payments: memberPayments,
+  };
+}
+
+export type AnnualZakatStatus = 'paid' | 'partial' | 'unpaid' | 'exempt';
+
+export interface ZakatMemberYearSummary {
+  zakatMember: ZakatMemberRow;
+  year: number;
+  peopleCount: number;
+  perPersonAmount: number;
+  dueAmount: number;
+  paidAmount: number;
+  remaining: number;
+  extra: number;
+  status: AnnualZakatStatus;
+  payments: ZakatPaymentRow[];
+}
+
+/**
+ * Computes annual Ramazan per-person Zakat status for one registered Zakat payer/family.
+ * Strictly separate from monthly charity profiles & contributions.
+ * Formula: dueAmount = active ? peopleCount * perPersonAmount : 0 (exact integer PKR).
+ */
+export function computeZakatMemberYearSummary(params: {
+  zakatMember: ZakatMemberRow;
+  year: number;
+  perPersonAmount: number;
+  payments: readonly ZakatPaymentRow[];
+}): ZakatMemberYearSummary {
+  const { zakatMember, year, perPersonAmount, payments } = params;
+  const rate = assertIntegerPKR(Math.max(0, perPersonAmount), 'perPersonAmount');
+  const memberPayments = payments
+    .filter((p) => p.zakat_member_id === zakatMember.id && p.year === year && !p.deleted_at)
+    .sort((a, b) => b.paid_on.localeCompare(a.paid_on));
+
+  const isFamily = Boolean(zakatMember.is_family);
+  const basePeople = isFamily ? Math.max(1, zakatMember.family_count) : 1;
+  const peopleCount = memberPayments[0]?.family_count_snapshot ?? basePeople;
+
+  const dueAmount = zakatMember.status === 'active' ? peopleCount * rate : 0;
+  const paidAmount = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+  const remaining = Math.max(0, dueAmount - paidAmount);
+  const extra = Math.max(0, paidAmount - dueAmount);
+
+  let status: AnnualZakatStatus;
+  if (dueAmount === 0) {
+    status = paidAmount > 0 ? 'paid' : 'exempt';
+  } else if (paidAmount >= dueAmount) {
+    status = 'paid';
+  } else if (paidAmount > 0) {
+    status = 'partial';
+  } else {
+    status = 'unpaid';
+  }
+
+  return {
+    zakatMember,
+    year,
+    peopleCount,
+    perPersonAmount: rate,
+    dueAmount,
+    paidAmount,
+    remaining,
+    extra,
+    status,
     payments: memberPayments,
   };
 }

@@ -105,6 +105,7 @@ const ZAKAT_SETTING: ZakatSettingRow = {
   nisab_amount: 180_000,
   rate_bps: 250,
   basis_note: 'Silver basis',
+  per_person_amount: 300,
 };
 
 const ZAKAT_ASSESSMENTS: ZakatAssessmentRow[] = [
@@ -129,6 +130,8 @@ const ZAKAT_PAYMENTS: ZakatPaymentRow[] = [
     ...META,
     id: 'zp1',
     member_id: 'm1',
+    zakat_member_id: null,
+    family_count_snapshot: null,
     assessment_id: 'za1',
     year: 2026,
     amount: 4_000,
@@ -215,7 +218,8 @@ describe('Offline PDF HTML templates (EN + Urdu RTL) & CSV export', () => {
       payments: ZAKAT_PAYMENTS,
     });
     expect(zakatHtml).toContain('Zakat Report — 2026');
-    expect(zakatHtml).toContain('committee scholar');
+    expect(zakatHtml).toContain('Annual Ramazan Zakat Register');
+    expect(zakatHtml).toContain('Rs 300');
 
     const unpaidHtml = buildUnpaidShortListHtml({
       orgSettings: ORG,

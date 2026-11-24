@@ -1,37 +1,42 @@
 import React, { useMemo, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
-import { formatDateShort, getKarachiToday } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { getKarachiToday } from '@/core/dates';
 import { Card } from '@/core/ui/Card';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
-import { computeMemberZakatYearSummary } from '@/core/rules/zakat';
+import { runSync } from '@/data/sync/syncEngine';
+import { computeZakatMemberYearSummary } from '@/core/rules/zakat';
 
-/** Passwordless Read-Only Community Zakat Register (strictly separate from charity). */
+type ZakatFilter = 'all' | 'unpaid' | 'paid';
+
+/** Passwordless Read-Only Community Annual Zakat Register (strictly separate from charity). */
 export function ViewerZakatScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
   const defaultYear = Number.parseInt(getKarachiToday().slice(0, 4), 10);
   const [selectedYear, setSelectedYear] = useState(defaultYear);
+  const [filter, setFilter] = useState<ZakatFilter>('all');
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const years = useMemo(() => {
     const set = new Set<number>([defaultYear]);
     (data?.zakatSettings ?? []).forEach((s) => set.add(s.year));
     (data?.zakatPayments ?? []).forEach((p) => set.add(p.year));
-    (data?.zakatAssessments ?? []).forEach((a) => set.add(a.year));
     return Array.from(set).sort((a, b) => b - a);
   }, [data, defaultYear]);
 
@@ -39,41 +44,56 @@ export function ViewerZakatScreen() {
     () => (data?.zakatSettings ?? []).find((s) => s.year === selectedYear) ?? null,
     [data, selectedYear],
   );
+  const perPersonAmount = activeSetting?.per_person_amount ?? 0;
 
-  const profileMap = useMemo(
-    () => new Map((data?.profiles ?? []).map((p) => [p.id, p])),
-    [data],
-  );
-
-  const balances = useMemo(() => {
+  const allSummaries = useMemo(() => {
     if (!data) return [];
-    return data.profiles
-      .map((member) => ({
-        member,
-        summary: computeMemberZakatYearSummary(
-          member.id,
-          selectedYear,
-          data.zakatAssessments,
-          data.zakatPayments,
-        ),
-      }))
-      .filter((r) => r.summary.dueAmount > 0 || r.summary.paidAmount > 0);
-  }, [data, selectedYear]);
+    return (data.zakatMembers ?? []).map((zm) =>
+      computeZakatMemberYearSummary({
+        zakatMember: zm,
+        year: selectedYear,
+        perPersonAmount,
+        payments: data.zakatPayments,
+      }),
+    );
+  }, [data, selectedYear, perPersonAmount]);
+
+  const filteredSummaries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allSummaries.filter((row) => {
+      if (q) {
+        const hay = `${row.zakatMember.member_no} ${row.zakatMember.payer_name} ${row.zakatMember.khandan_name}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (filter === 'unpaid') return row.status === 'unpaid' || row.status === 'partial';
+      if (filter === 'paid') return row.status === 'paid';
+      return true;
+    });
+  }, [allSummaries, search, filter]);
 
   const totals = useMemo(() => {
+    let people = 0;
     let due = 0;
     let paid = 0;
-    for (const r of balances) {
-      due += r.summary.dueAmount;
-      paid += r.summary.paidAmount;
+    let remaining = 0;
+    let unpaidCount = 0;
+    let paidCount = 0;
+    for (const row of allSummaries) {
+      if (row.zakatMember.status === 'active') people += row.peopleCount;
+      due += row.dueAmount;
+      paid += row.paidAmount;
+      remaining += row.remaining;
+      if (row.status === 'paid') paidCount += 1;
+      else if (row.status === 'unpaid' || row.status === 'partial') unpaidCount += 1;
     }
-    return { due, paid, balance: due - paid };
-  }, [balances]);
+    return { people, due, paid, remaining, unpaidCount, paidCount };
+  }, [allSummaries]);
 
-  const yearPayments = useMemo(
-    () => (data?.zakatPayments ?? []).filter((p) => p.year === selectedYear && !p.deleted_at),
-    [data, selectedYear],
-  );
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await runSync();
+    setRefreshing(false);
+  };
 
   if (isLoading && !data) {
     return <LoadingState />;
@@ -83,6 +103,9 @@ export function ViewerZakatScreen() {
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.zakat} />
+      }
     >
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {years.map((yr) => {
@@ -114,8 +137,8 @@ export function ViewerZakatScreen() {
           </Text>
         </View>
         <Text style={[styles.meta, { color: colors.textSecondary }]}>
-          {activeSetting
-            ? `${t('zakat.nisabAmount')}: ${formatPKR(activeSetting.nisab_amount)} · ${(activeSetting.rate_bps / 100).toFixed(1)}%`
+          {perPersonAmount > 0
+            ? `${t('zakat.rateSummaryLine', { rate: formatPKR(perPersonAmount), people: totals.people })}${activeSetting?.basis_note ? ` · ${activeSetting.basis_note}` : ''}`
             : t('zakat.separateNote')}
         </Text>
         <View style={styles.statsRow}>
@@ -129,41 +152,126 @@ export function ViewerZakatScreen() {
           </View>
           <View style={styles.statCol}>
             <Text style={[styles.meta, { color: colors.textSecondary }]}>{t('dashboard.zakatBalance')}</Text>
-            <Text style={[styles.statVal, typography.numeric, { color: colors.zakatText }]}>{formatPKR(totals.balance)}</Text>
+            <Text style={[styles.statVal, typography.numeric, { color: totals.remaining > 0 ? colors.danger : colors.zakatText }]}>
+              {formatPKR(totals.remaining)}
+            </Text>
           </View>
         </View>
       </Card>
 
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('zakat.payments')}</Text>
-      {yearPayments.length === 0 ? (
-        <EmptyState icon="sparkles-outline" title={t('common.emptyTitle')} subtitle={t('zakat.separateNote')} />
-      ) : (
-        yearPayments.map((pay) => {
-          const member = profileMap.get(pay.member_id);
-          return (
-            <Card key={pay.id} style={styles.card}>
-              <View style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowName, { color: colors.text }]}>
-                    #{member?.member_no ?? '?'} · {member?.full_name ?? ''}
+      {allSummaries.length > 0 ? (
+        <View style={styles.filterBlock}>
+          <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}>
+            <Ionicons name="search" size={16} color={colors.textMuted} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder={t('zakat.searchPlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              style={[styles.searchInput, { color: colors.text }]}
+            />
+          </View>
+          <View style={styles.filterRow}>
+            {(
+              [
+                { key: 'all', label: `${t('common.all')} (${allSummaries.length})` },
+                { key: 'unpaid', label: `${t('zakat.statusUnpaid')} (${totals.unpaidCount})` },
+                { key: 'paid', label: `${t('zakat.statusPaid')} (${totals.paidCount})` },
+              ] as const
+            ).map((item) => {
+              const active = filter === item.key;
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() => setFilter(item.key)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor: active ? colors.zakatSoft : colors.surface,
+                      borderColor: active ? colors.zakat : colors.border,
+                      borderRadius: radius.pill,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.filterText, { color: active ? colors.zakatText : colors.textSecondary }]}>
+                    {item.label}
                   </Text>
-                  <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                    {formatDateShort(pay.paid_on, lang)}
-                    {pay.remark ? ` · ${pay.remark}` : ''}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {filteredSummaries.length === 0 ? (
+        <EmptyState icon="sparkles-outline" title={t('zakat.noMembersYet')} subtitle={t('zakat.separateNote')} />
+      ) : (
+        filteredSummaries.map((row) => {
+          const zm = row.zakatMember;
+          const badgeBg =
+            row.status === 'paid'
+              ? colors.metBg
+              : row.status === 'partial'
+                ? colors.shortBg
+                : row.status === 'unpaid'
+                  ? colors.unpaidBg
+                  : colors.exemptBg;
+          const badgeFg =
+            row.status === 'paid'
+              ? colors.metText
+              : row.status === 'partial'
+                ? colors.shortText
+                : row.status === 'unpaid'
+                  ? colors.unpaidText
+                  : colors.exemptText;
+          const statusLabel =
+            row.status === 'paid'
+              ? t('zakat.statusPaid')
+              : row.status === 'partial'
+                ? t('zakat.statusPartial')
+                : row.status === 'unpaid'
+                  ? t('zakat.statusUnpaid')
+                  : t('compliance.exempt');
+
+          return (
+            <Card key={zm.id} style={styles.card}>
+              <View style={styles.rowBetween}>
+                <View style={styles.flex1}>
+                  <Text style={[styles.rowName, { color: colors.text }]}>
+                    #{zm.member_no} · {zm.payer_name}
+                  </Text>
+                  <View style={styles.tagRow}>
+                    {zm.khandan_name ? (
+                      <Text style={[styles.meta, { color: colors.textSecondary }]}>{zm.khandan_name}</Text>
+                    ) : null}
+                    <View style={[styles.peoplePill, { backgroundColor: colors.zakatSoft, borderRadius: radius.pill }]}>
+                      <Ionicons
+                        name={zm.is_family ? 'people-outline' : 'person-outline'}
+                        size={12}
+                        color={colors.zakatText}
+                      />
+                      <Text style={[styles.peoplePillText, { color: colors.zakatText }]}>
+                        {zm.is_family
+                          ? t('zakat.familyBadge', { count: row.peopleCount })
+                          : t('zakat.soloBadge')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.rightCol}>
+                  <View style={[styles.statusPill, { backgroundColor: badgeBg, borderRadius: radius.pill }]}>
+                    <Text style={[styles.statusPillText, { color: badgeFg }]}>{statusLabel}</Text>
+                  </View>
+                  <Text style={[styles.statVal, typography.numeric, { color: row.paidAmount > 0 ? colors.metText : colors.text }]}>
+                    {row.paidAmount > 0 ? formatPKR(row.paidAmount) : formatPKR(row.dueAmount)}
                   </Text>
                 </View>
-                <Text style={[styles.statVal, typography.numeric, { color: colors.zakat }]}>
-                  {formatPKR(pay.amount)}
-                </Text>
               </View>
             </Card>
           );
         })
       )}
-
-      <Card style={{ backgroundColor: colors.surfaceSubtle }}>
-        <Text style={[styles.meta, { color: colors.textSecondary }]}>{t('zakat.scholarNote')}</Text>
-      </Card>
     </ScrollView>
   );
 }
@@ -180,8 +288,20 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   statCol: { flex: 1, gap: 2 },
   statVal: { fontSize: 15, fontWeight: '800' },
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginTop: 4 },
+  filterBlock: { gap: 8 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, paddingHorizontal: 12, minHeight: 40 },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 6 },
+  filterRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
+  filterText: { fontSize: 12, fontWeight: '600' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  flex1: { flex: 1 },
   rowName: { fontSize: 14, fontWeight: '700' },
+  tagRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  peoplePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2 },
+  peoplePillText: { fontSize: 11, fontWeight: '700' },
+  rightCol: { alignItems: 'flex-end', gap: 2 },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 2 },
+  statusPillText: { fontSize: 11, fontWeight: '700' },
   meta: { fontSize: 12, lineHeight: 18 },
 });

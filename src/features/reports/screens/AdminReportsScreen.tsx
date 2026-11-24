@@ -19,7 +19,7 @@ import { useRegisterSnapshot } from '@/data/db/queries';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
 import { findCurrentFiscalYear } from '@/core/rules/fiscalYear';
 import { computeMemberFiscalYearSummary } from '@/core/rules/compliance';
-import { computeMemberZakatYearSummary } from '@/core/rules/zakat';
+import { computeMemberZakatYearSummary, computeZakatMemberYearSummary } from '@/core/rules/zakat';
 import { ReportLang } from '../templates/htmlBase';
 import {
   buildAnnualLedgerHtml,
@@ -221,10 +221,24 @@ export function AdminReportsScreen() {
             void runExport('summary-pdf', async (urduFontBase64) => {
               let zakatDueTotal = 0;
               let zakatPaidTotal = 0;
-              for (const m of data.profiles) {
-                const z = computeMemberZakatYearSummary(m.id, zakatYear, data.zakatAssessments, data.zakatPayments);
-                zakatDueTotal += z.dueAmount;
-                zakatPaidTotal += z.paidAmount;
+              const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
+              if (data.zakatMembers.length > 0) {
+                for (const zm of data.zakatMembers) {
+                  const z = computeZakatMemberYearSummary({
+                    zakatMember: zm,
+                    year: zakatYear,
+                    perPersonAmount: zakatSetting?.per_person_amount ?? 0,
+                    payments: data.zakatPayments,
+                  });
+                  zakatDueTotal += z.dueAmount;
+                  zakatPaidTotal += z.paidAmount;
+                }
+              } else {
+                for (const m of data.profiles) {
+                  const z = computeMemberZakatYearSummary(m.id, zakatYear, data.zakatAssessments, data.zakatPayments);
+                  zakatDueTotal += z.dueAmount;
+                  zakatPaidTotal += z.paidAmount;
+                }
               }
               const html = buildFinancialSummaryHtml({
                 orgSettings: data.orgSettings,
@@ -323,6 +337,7 @@ export function AdminReportsScreen() {
                 year: zakatYear,
                 setting,
                 profiles: data.profiles,
+                zakatMembers: data.zakatMembers,
                 assessments: data.zakatAssessments,
                 payments: data.zakatPayments,
               });

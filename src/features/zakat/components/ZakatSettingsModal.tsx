@@ -25,6 +25,8 @@ interface ZakatSettingsModalProps {
   existingSetting: ZakatSettingRow | null;
 }
 
+const QUICK_RATES = [300, 350, 500, 1000];
+
 export function ZakatSettingsModal(props: ZakatSettingsModalProps) {
   if (!props.visible) return null;
   return (
@@ -45,24 +47,19 @@ function ZakatSettingsModalInner({
   const { t } = useTranslation();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
-  const [nisabInput, setNisabInput] = useState(
-    existingSetting ? String(existingSetting.nisab_amount) : '',
-  );
-  const [rateBpsInput, setRateBpsInput] = useState(
-    existingSetting ? String(existingSetting.rate_bps) : '250',
+  const [perPersonInput, setPerPersonInput] = useState(
+    existingSetting && existingSetting.per_person_amount > 0
+      ? String(existingSetting.per_person_amount)
+      : '',
   );
   const [basisNote, setBasisNote] = useState(existingSetting?.basis_note ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    const nisab = parsePKR(nisabInput);
-    const rateBps = Number.parseInt(rateBpsInput, 10);
-    if (nisab == null || nisab < 0) {
-      Alert.alert(t('common.required'), t('zakat.nisabAmount'));
-      return;
-    }
-    if (!Number.isInteger(rateBps) || rateBps <= 0 || rateBps > 10000) {
-      Alert.alert(t('common.required'), t('zakat.rateBps'));
+    if (saving) return;
+    const perPerson = parsePKR(perPersonInput);
+    if (perPerson == null || perPerson <= 0) {
+      Alert.alert(t('common.required'), t('zakat.perPersonRate'));
       return;
     }
 
@@ -73,8 +70,7 @@ function ZakatSettingsModalInner({
           'zakat_settings',
           existingSetting.id,
           {
-            nisab_amount: nisab,
-            rate_bps: rateBps,
+            per_person_amount: perPerson,
             basis_note: basisNote.trim(),
           },
           { actorId: adminId },
@@ -84,8 +80,9 @@ function ZakatSettingsModalInner({
           'zakat_settings',
           {
             year,
-            nisab_amount: nisab,
-            rate_bps: rateBps,
+            per_person_amount: perPerson,
+            nisab_amount: 0,
+            rate_bps: 250,
             basis_note: basisNote.trim(),
           },
           { actorId: adminId },
@@ -105,7 +102,13 @@ function ZakatSettingsModalInner({
         <View
           style={[
             styles.sheet,
-            { backgroundColor: colors.background, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl },
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.zakatBorder,
+              borderWidth: 1,
+              borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl,
+            },
           ]}
         >
           <View style={styles.header}>
@@ -118,31 +121,49 @@ function ZakatSettingsModalInner({
           </View>
 
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.desc, { color: colors.textSecondary }]}>
+              {t('zakat.perPersonHint')}
+            </Text>
+
             <TextField
-              label={t('zakat.nisabAmount')}
+              label={t('zakat.perPersonRate')}
               keyboardType="number-pad"
-              value={nisabInput}
-              onChangeText={setNisabInput}
-              placeholder="e.g. 180000"
-            />
-            <TextField
-              label={t('zakat.rateBps')}
-              keyboardType="number-pad"
-              value={rateBpsInput}
-              onChangeText={setRateBpsInput}
-              helperText="250 basis points = 2.5% (exact integer half-up rounding)"
-            />
-            <TextField
-              label={t('zakat.basisNote')}
-              value={basisNote}
-              onChangeText={setBasisNote}
-              placeholder="Silver basis (52.5 tola), price date YYYY-MM-DD"
-              multiline
+              value={perPersonInput}
+              onChangeText={setPerPersonInput}
+              placeholder="e.g. 300"
+              autoFocus
             />
 
-            <Text style={[styles.note, { color: colors.textSecondary }]}>
-              {t('zakat.scholarNote')}
-            </Text>
+            <View style={styles.quickRow}>
+              {QUICK_RATES.map((amt) => {
+                const active = perPersonInput === String(amt);
+                return (
+                  <Pressable
+                    key={amt}
+                    onPress={() => setPerPersonInput(String(amt))}
+                    style={[
+                      styles.quickChip,
+                      {
+                        backgroundColor: active ? colors.zakat : colors.surfaceSubtle,
+                        borderColor: active ? colors.zakat : colors.border,
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.quickText, { color: active ? '#FFFFFF' : colors.text }]}>
+                      Rs {amt.toLocaleString()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <TextField
+              label={`${t('zakat.ramazanNote')} (${t('common.optional')})`}
+              value={basisNote}
+              onChangeText={setBasisNote}
+              placeholder="Ramazan 2026"
+            />
 
             <View style={styles.actions}>
               <Button label={t('common.cancel')} variant="secondary" onPress={onClose} style={styles.flex1} />
@@ -169,7 +190,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700' },
   closeBtn: { padding: 6 },
   body: { padding: 16, gap: 14, paddingBottom: 32 },
-  note: { fontSize: 12, lineHeight: 18 },
-  actions: { flexDirection: 'row', gap: 10 },
+  desc: { fontSize: 13, lineHeight: 19 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  quickChip: { paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1 },
+  quickText: { fontSize: 13, fontWeight: '700' },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   flex1: { flex: 1 },
 });

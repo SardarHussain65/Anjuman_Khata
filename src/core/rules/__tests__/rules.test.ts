@@ -8,6 +8,7 @@ import {
   computeMemberZakatYearSummary,
   computeNetZakatable,
   computeZakatDue,
+  computeZakatMemberYearSummary,
   previewZakatCalculation,
 } from '../zakat';
 import {
@@ -23,6 +24,7 @@ import {
   TierRateRow,
   TierRow,
   ZakatAssessmentRow,
+  ZakatMemberRow,
   ZakatPaymentRow,
 } from '@/data/db/types';
 
@@ -315,6 +317,8 @@ describe('Zakat integer math & strict separation from charity', () => {
         ...BASE_META,
         id: 'zp-1',
         member_id: 'm1',
+        zakat_member_id: null,
+        family_count_snapshot: null,
         assessment_id: 'za-1',
         year: 2026,
         amount: 5_000,
@@ -329,6 +333,72 @@ describe('Zakat integer math & strict separation from charity', () => {
     expect(summary.dueAmount).toBe(13_750);
     expect(summary.paidAmount).toBe(5_000);
     expect(summary.balance).toBe(8_750);
+  });
+
+  it('computes annual per-person Zakat for separate solo & family registrations', () => {
+    const familyMember: ZakatMemberRow = {
+      ...BASE_META,
+      id: 'zm-1',
+      member_no: 1,
+      payer_name: 'Haji Aslam',
+      khandan_name: 'Sardar Khel',
+      is_family: true,
+      family_count: 6,
+      status: 'active',
+      notes: null,
+    };
+    const soloMember: ZakatMemberRow = {
+      ...BASE_META,
+      id: 'zm-2',
+      member_no: 2,
+      payer_name: 'Tariq',
+      khandan_name: 'Malik',
+      is_family: false,
+      family_count: 1,
+      status: 'active',
+      notes: null,
+    };
+    const payments: ZakatPaymentRow[] = [
+      {
+        ...BASE_META,
+        id: 'zp-fam',
+        member_id: null,
+        zakat_member_id: 'zm-1',
+        family_count_snapshot: 6,
+        assessment_id: null,
+        year: 2026,
+        amount: 2_000, // 6 * 300 = 1800 due + 200 voluntary extra
+        paid_on: '2026-03-27',
+        collected_by: 'admin-1',
+        remark: 'Cash',
+        void_reason: null,
+      },
+    ];
+
+    const famSummary = computeZakatMemberYearSummary({
+      zakatMember: familyMember,
+      year: 2026,
+      perPersonAmount: 300,
+      payments,
+    });
+    expect(famSummary.peopleCount).toBe(6);
+    expect(famSummary.dueAmount).toBe(1_800);
+    expect(famSummary.paidAmount).toBe(2_000);
+    expect(famSummary.remaining).toBe(0);
+    expect(famSummary.extra).toBe(200);
+    expect(famSummary.status).toBe('paid');
+
+    const soloSummary = computeZakatMemberYearSummary({
+      zakatMember: soloMember,
+      year: 2026,
+      perPersonAmount: 300,
+      payments,
+    });
+    expect(soloSummary.peopleCount).toBe(1);
+    expect(soloSummary.dueAmount).toBe(300);
+    expect(soloSummary.paidAmount).toBe(0);
+    expect(soloSummary.remaining).toBe(300);
+    expect(soloSummary.status).toBe('unpaid');
   });
 });
 

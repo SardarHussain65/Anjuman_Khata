@@ -9,6 +9,7 @@ import {
   TierRateRow,
   TierRow,
   ZakatAssessmentRow,
+  ZakatMemberRow,
   ZakatPaymentRow,
   ZakatSettingRow,
 } from '@/data/db/types';
@@ -18,7 +19,7 @@ import {
 } from '@/core/rules/compliance';
 import { getMonthsForFiscalYear } from '@/core/rules/fiscalYear';
 import { getMemberTierHistory } from '@/core/rules/tiers';
-import { computeMemberZakatYearSummary } from '@/core/rules/zakat';
+import { computeMemberZakatYearSummary, computeZakatMemberYearSummary } from '@/core/rules/zakat';
 import { escapeHtml, ReportLang, wrapReportHtml } from './htmlBase';
 
 interface SharedTemplateInput {
@@ -364,54 +365,84 @@ export function buildMemberStatementHtml(
   });
 }
 
-/** (4) Zakat Report — Assessments, Payments, Balances & Scholar Note */
+/** (4) Zakat Report — Separate Annual Zakat Register (Per-Person × Family/Solo) */
 export function buildZakatReportHtml(
   input: SharedTemplateInput & {
     year: number;
     setting: ZakatSettingRow | null;
     profiles: ProfileRow[];
+    zakatMembers?: ZakatMemberRow[];
     assessments: ZakatAssessmentRow[];
     payments: ZakatPaymentRow[];
   },
 ): string {
-  const { year, setting, profiles, assessments, payments, lang } = input;
+  const { year, setting, profiles, zakatMembers = [], assessments, payments, lang } = input;
   const isUr = lang === 'ur';
+  const perPersonAmount = setting?.per_person_amount ?? 0;
 
+  let totalPeople = 0;
   let totalDue = 0;
   let totalPaid = 0;
-  const rows = profiles
-    .map((m) => ({ m, s: computeMemberZakatYearSummary(m.id, year, assessments, payments) }))
-    .filter((x) => x.s.dueAmount > 0 || x.s.paidAmount > 0)
-    .map(({ m, s }) => {
-      totalDue += s.dueAmount;
-      totalPaid += s.paidAmount;
-      return `<tr>
-        <td class="num">${m.member_no}</td>
-        <td>${escapeHtml(memberDisplayName(m, lang))}</td>
-        <td class="num">${formatPKR(s.dueAmount)}</td>
-        <td class="num">${formatPKR(s.paidAmount)}</td>
-        <td class="num"><strong>${formatPKR(s.balance)}</strong></td>
-      </tr>`;
-    })
-    .join('');
+  let rows = '';
+
+  if (zakatMembers.length > 0) {
+    rows = zakatMembers
+      .map((zm) => {
+        const s = computeZakatMemberYearSummary({
+          zakatMember: zm,
+          year,
+          perPersonAmount,
+          payments,
+        });
+        if (zm.status === 'active') totalPeople += s.peopleCount;
+        totalDue += s.dueAmount;
+        totalPaid += s.paidAmount;
+        return `<tr>
+          <td class="num">${zm.member_no}</td>
+          <td><strong>${escapeHtml(zm.payer_name)}</strong>${zm.khandan_name ? ` (${escapeHtml(zm.khandan_name)})` : ''}</td>
+          <td class="num">${s.peopleCount}</td>
+          <td class="num">${formatPKR(s.dueAmount)}</td>
+          <td class="num">${formatPKR(s.paidAmount)}</td>
+          <td class="num"><strong>${formatPKR(s.remaining)}</strong></td>
+        </tr>`;
+      })
+      .join('');
+  } else {
+    rows = profiles
+      .map((m) => ({ m, s: computeMemberZakatYearSummary(m.id, year, assessments, payments) }))
+      .filter((x) => x.s.dueAmount > 0 || x.s.paidAmount > 0)
+      .map(({ m, s }) => {
+        totalDue += s.dueAmount;
+        totalPaid += s.paidAmount;
+        return `<tr>
+          <td class="num">${m.member_no}</td>
+          <td>${escapeHtml(memberDisplayName(m, lang))}</td>
+          <td class="num">1</td>
+          <td class="num">${formatPKR(s.dueAmount)}</td>
+          <td class="num">${formatPKR(s.paidAmount)}</td>
+          <td class="num"><strong>${formatPKR(s.balance)}</strong></td>
+        </tr>`;
+      })
+      .join('');
+  }
 
   const bodyHtml = `
     <div class="summary-grid">
       <div class="stat-box">
-        <div class="stat-label">${isUr ? 'نصاب' : 'Nisab Threshold'}</div>
-        <div class="stat-val">${setting ? formatPKR(setting.nisab_amount) : '—'}</div>
+        <div class="stat-label">${isUr ? 'فی کس رقم' : 'Per Person Rate'}</div>
+        <div class="stat-val">${perPersonAmount > 0 ? formatPKR(perPersonAmount) : setting ? formatPKR(setting.nisab_amount) : '—'}</div>
       </div>
       <div class="stat-box">
-        <div class="stat-label">${isUr ? 'کل واجب الادا' : 'Total Assessed Due'}</div>
-        <div class="stat-val">${formatPKR(totalDue)}</div>
+        <div class="stat-label">${isUr ? 'کل واجب الادا' : 'Total Due'}</div>
+        <div class="stat-val">${formatPKR(totalDue)}${totalPeople > 0 ? ` (${totalPeople})` : ''}</div>
       </div>
       <div class="stat-box">
         <div class="stat-label">${isUr ? 'کل وصول شدہ' : 'Total Zakat Paid'}</div>
         <div class="stat-val">${formatPKR(totalPaid)}</div>
       </div>
       <div class="stat-box">
-        <div class="stat-label">${isUr ? 'کل بقایا' : 'Outstanding Balance'}</div>
-        <div class="stat-val">${formatPKR(totalDue - totalPaid)}</div>
+        <div class="stat-label">${isUr ? 'کل بقایا' : 'Remaining Balance'}</div>
+        <div class="stat-val">${formatPKR(Math.max(0, totalDue - totalPaid))}</div>
       </div>
     </div>
 
@@ -419,30 +450,24 @@ export function buildZakatReportHtml(
       <thead>
         <tr>
           <th class="num">#</th>
-          <th>${isUr ? 'رکن' : 'Member'}</th>
+          <th>${isUr ? 'نام / خاندان' : 'Payer / Khandan'}</th>
+          <th class="num">${isUr ? 'افراد' : 'People'}</th>
           <th class="num">${isUr ? 'واجب الادا' : 'Due'}</th>
           <th class="num">${isUr ? 'ادا شدہ' : 'Paid'}</th>
-          <th class="num">${isUr ? 'بقایا' : 'Balance'}</th>
+          <th class="num">${isUr ? 'بقایا' : 'Remaining'}</th>
         </tr>
       </thead>
-      <tbody>${rows || `<tr><td colspan="5">${isUr ? 'کوئی زکوٰۃ اندراج نہیں' : 'No Zakat records'}</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="6">${isUr ? 'کوئی زکوٰۃ اندراج نہیں' : 'No Zakat records'}</td></tr>`}</tbody>
     </table>
 
-    <div class="scholar-note">
-      ${escapeHtml(setting?.basis_note ?? '')}<br/>
-      ${
-        isUr
-          ? 'نوٹ: نصاب اور قابلِ زکوٰۃ اثاثوں کے احکام فقہی مسلک کے مطابق مختلف ہو سکتے ہیں۔ براہ کرم کمیٹی کے عالمِ دین سے تصدیق کریں۔'
-          : 'Note: Nisab thresholds and eligible-asset rules vary by school of thought and should be confirmed with the committee scholar.'
-      }
-    </div>
+    ${setting?.basis_note ? `<div class="scholar-note">${escapeHtml(setting.basis_note)}</div>` : ''}
   `;
 
   return wrapReportHtml({
     ...input,
     accent: 'zakat',
     title: isUr ? `زکوٰۃ رپورٹ — ${year}` : `Zakat Report — ${year}`,
-    subtitle: isUr ? 'چندے سے مکمل الگ رجسٹر' : 'Strictly Separate Zakat Register',
+    subtitle: isUr ? 'سالانہ رمضان زکوٰۃ رجسٹر — چندے سے مکمل الگ' : 'Annual Ramazan Zakat Register — Strictly Separate from Charity',
     bodyHtml,
   });
 }
