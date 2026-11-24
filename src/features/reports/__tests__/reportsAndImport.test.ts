@@ -6,6 +6,13 @@ import {
   buildUnpaidShortListHtml,
   buildZakatReportHtml,
 } from '../templates/reportTemplates';
+import {
+  buildAnnualLedgerPdfBytes,
+  buildFinancialSummaryPdfBytes,
+  buildMemberStatementPdfBytes,
+  buildUnpaidShortListPdfBytes,
+  buildZakatReportPdfBytes,
+} from '../pdfBuilder';
 import { parseRegisterCsv } from '../csvImportParser';
 import { computeMemberFiscalYearSummary } from '@/core/rules/compliance';
 import {
@@ -237,6 +244,71 @@ describe('Offline PDF HTML templates (EN + Urdu RTL) & CSV export', () => {
     const csv = buildLedgerCsv(FY, summaries);
     expect(csv.startsWith('\uFEFFmember_no,name')).toBe(true);
     expect(csv).toContain('1,Tariq Mehmood,طارق محمود,Engineer,active,Committee,500,0,0,0,0,0,0,0,0,0,0,0,500,500');
+  });
+
+  it('generates real binary %PDF-1.7 files for all 5 reports completely offline (pure JS, no WebView)', async () => {
+    const headerOf = (bytes: Uint8Array) =>
+      String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]);
+
+    const ledgerPdf = await buildAnnualLedgerPdfBytes({
+      orgSettings: ORG,
+      pendingSyncCount: 2,
+      fiscalYear: FY,
+      summaries,
+    });
+    expect(headerOf(ledgerPdf)).toBe('%PDF-');
+    expect(ledgerPdf.length).toBeGreaterThan(1000);
+
+    const summaryPdf = await buildFinancialSummaryPdfBytes({
+      orgSettings: ORG,
+      pendingSyncCount: 0,
+      fiscalYear: FY,
+      summaries,
+      zakatYear: 2026,
+      zakatDueTotal: 10_000,
+      zakatPaidTotal: 4_000,
+    });
+    expect(headerOf(summaryPdf)).toBe('%PDF-');
+    expect(summaryPdf.length).toBeGreaterThan(1000);
+
+    const statementPdf = await buildMemberStatementPdfBytes({
+      orgSettings: ORG,
+      pendingSyncCount: 0,
+      member: MEMBER,
+      fiscalYear: FY,
+      contributions: CONTRIBUTIONS,
+      memberTiers: MEMBER_TIERS,
+      tiers: [TIER],
+      tierRates: [],
+      zakatAssessments: ZAKAT_ASSESSMENTS,
+      zakatPayments: ZAKAT_PAYMENTS,
+      zakatYear: 2026,
+      currentMonthStart: '2026-02-01',
+    });
+    expect(headerOf(statementPdf)).toBe('%PDF-');
+    expect(statementPdf.length).toBeGreaterThan(1000);
+
+    const zakatPdf = await buildZakatReportPdfBytes({
+      orgSettings: ORG,
+      pendingSyncCount: 0,
+      year: 2026,
+      setting: ZAKAT_SETTING,
+      profiles: [MEMBER],
+      assessments: ZAKAT_ASSESSMENTS,
+      payments: ZAKAT_PAYMENTS,
+    });
+    expect(headerOf(zakatPdf)).toBe('%PDF-');
+    expect(zakatPdf.length).toBeGreaterThan(1000);
+
+    const unpaidPdf = await buildUnpaidShortListPdfBytes({
+      orgSettings: ORG,
+      pendingSyncCount: 0,
+      fiscalYear: FY,
+      summaries,
+      currentMonthStart: '2026-02-01',
+    });
+    expect(headerOf(unpaidPdf)).toBe('%PDF-');
+    expect(unpaidPdf.length).toBeGreaterThan(1000);
   });
 });
 

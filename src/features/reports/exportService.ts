@@ -1,14 +1,13 @@
 import { Platform } from 'react-native';
-import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 
 let cachedUrduFontBase64: string | null = null;
 
 /**
  * Loads the bundled Noto Naskh Arabic TTF font completely offline from app assets
- * and encodes it as base64 for embedding into PDF HTML.
+ * and encodes it as base64 for embedding into HTML exports.
  */
 export async function loadOfflineUrduFontBase64(): Promise<string> {
   if (cachedUrduFontBase64 !== null) {
@@ -26,89 +25,108 @@ export async function loadOfflineUrduFontBase64(): Promise<string> {
       return cachedUrduFontBase64;
     }
   } catch {
-    // Fallback cleanly to system Noto Naskh Arabic / sans-serif font
+    // Fallback cleanly to system font
   }
   cachedUrduFontBase64 = '';
   return '';
 }
 
-async function createNamedPdfInCache(
-  html: string,
-  fileName: string,
-): Promise<{ uri: string; safeName: string }> {
-  const { uri } = await Print.printToFileAsync({
-    html,
-    width: 595,
-    height: 842,
-  });
-  const safeName = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
-
-  try {
-    const targetFile = new File(Paths.cache, safeName);
-    if (targetFile.exists) {
-      targetFile.delete();
-    }
-    const sourceFile = new File(uri);
-    await sourceFile.copy(targetFile);
-    return { uri: targetFile.uri, safeName };
-  } catch {
-    return { uri, safeName };
-  }
+function normalizePdfName(fileName: string): string {
+  const clean = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return clean.endsWith('.pdf') ? clean : `${clean}.pdf`;
 }
 
 /**
- * Generates a PDF file and opens the native Share Sheet (WhatsApp, Gmail, Drive).
- * Falls back to native Print / Save-as-PDF preview if Android WebView's background
- * PDF writer fails on a specific device.
+ * Writes pure-JS generated PDF bytes to the app's cache directory.
+ * Zero WebView / expo-print dependency — works 100% offline on every Android & iOS version.
  */
-export async function generateAndSharePdf(html: string, fileName: string): Promise<string> {
-  try {
-    const { uri, safeName } = await createNamedPdfInCache(html, fileName);
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, {
-        mimeType: 'application/pdf',
-        dialogTitle: safeName,
-        UTI: 'com.adobe.pdf',
-      });
-      return uri;
-    }
-  } catch {
-    // Some Android 14/15/16 WebView builds reject printToFileAsync before onLayout finishes;
-    // fall back to Android's native PrintManager which always renders & saves PDF reliably.
+export async function writePdfBytesToCache(
+  pdfBytes: Uint8Array,
+  fileName: string,
+): Promise<{ file: File; safeName: string }> {
+  const safeName = normalizePdfName(fileName);
+  const file = new File(Paths.cache, safeName);
+  if (file.exists) {
+    file.delete();
   }
-
-  await Print.printAsync({ html });
-  return fileName;
+  await file.write(pdfBytes);
+  return { file, safeName };
 }
 
 /**
- * Opens Android's native Print Preview / "Save as PDF" dialog (1-tap save straight to
- * phone Downloads with live visual preview), or iOS Share Sheet ("Save to Files").
- * Works 100% offline on every Android & iOS version.
+ * Generates a real PDF file in cache and opens the native Share Sheet (WhatsApp, Gmail, Drive, PDF viewer).
  */
-export async function downloadPdfToDevice(
-  html: string,
-  fileName: string,
-): Promise<{ saved: boolean; canceled?: boolean; fileName: string }> {
-  const safeName = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+export async function sharePdfBytes(pdfBytes: Uint8Array, fileName: string): Promise<string> {
+  const { file, safeName } = await writePdfBytesToCache(pdfBytes, fileName);
 
-  if (Platform.OS === 'android') {
-    await Print.printAsync({ html });
-    return { saved: false, fileName: safeName };
-  }
-
-  const { uri } = await createNamedPdfInCache(html, safeName);
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
+    await Sharing.shareAsync(file.uri, {
       mimeType: 'application/pdf',
       dialogTitle: safeName,
       UTI: 'com.adobe.pdf',
     });
-    return { saved: true, fileName: safeName };
+    return file.uri;
   }
 
-  await Print.printAsync({ html });
-  return { saved: false, fileName: safeName };
+  if (await file.canPreview({ mimeType: 'application/pdf' })) {
+    await file.preview({ mimeType: 'application/pdf', title: safeName });
+  }
+  return file.uri;
+}
+
+/**
+ * Opens a generated PDF directly in the device's native PDF viewer (`ACTION_VIEW` / Quick Look),
+ * falling back to the Share Sheet if no viewer is registered.
+ */
+export async function previewOrSharePdfFile(file: File, safeName: string): Promise<void> {
+  try {
+    if (await file.canPreview({ mimeType: 'application/pdf' })) {
+      await file.preview({ mimeType: 'application/pdf', title: safeName });
+      return;
+    }
+  } catch {
+    // Fall through to Share Sheet
+  }
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: 'application/pdf',
+      dialogTitle: safeName,
+      UTI: 'com.adobe.pdf',
+    });
+  }
+}
+
+/**
+ * Downloads/saves a real PDF directly onto the user's phone storage:
+ * - Android: opens the native folder picker (e.g. Downloads), creates `<fileName>.pdf`,
+ *   and writes the PDF binary bytes directly to that folder.
+ * - iOS: opens the native Share Sheet ("Save to Files").
+ */
+export async function downloadPdfBytesToDevice(
+  pdfBytes: Uint8Array,
+  fileName: string,
+): Promise<{ saved: boolean; canceled?: boolean; fileName: string; cacheFile: File }> {
+  const { file: cacheFile, safeName } = await writePdfBytesToCache(pdfBytes, fileName);
+
+  if (Platform.OS === 'android') {
+    try {
+      const pickedDir = await Directory.pickDirectoryAsync();
+      const targetFile = pickedDir.createFile(safeName, 'application/pdf');
+      await targetFile.write(pdfBytes);
+      return { saved: true, fileName: safeName, cacheFile };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/cancel|dismiss|abort|user/i.test(msg)) {
+        return { saved: false, canceled: true, fileName: safeName, cacheFile };
+      }
+      // Fallback: if SAF folder picker is unavailable on a specific OEM ROM, open Share Sheet
+      await previewOrSharePdfFile(cacheFile, safeName);
+      return { saved: false, fileName: safeName, cacheFile };
+    }
+  }
+
+  await sharePdfBytes(pdfBytes, safeName);
+  return { saved: true, fileName: safeName, cacheFile };
 }
 
 /** Writes UTF-8 CSV to cache and opens the native share sheet. */

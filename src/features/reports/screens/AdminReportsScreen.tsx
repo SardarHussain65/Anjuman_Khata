@@ -21,19 +21,19 @@ import { findCurrentFiscalYear } from '@/core/rules/fiscalYear';
 import { computeMemberFiscalYearSummary } from '@/core/rules/compliance';
 import { computeMemberZakatYearSummary, computeZakatMemberYearSummary } from '@/core/rules/zakat';
 import { ReportLang } from '../templates/htmlBase';
+import { buildLedgerCsv } from '../templates/reportTemplates';
 import {
-  buildAnnualLedgerHtml,
-  buildFinancialSummaryHtml,
-  buildLedgerCsv,
-  buildMemberStatementHtml,
-  buildUnpaidShortListHtml,
-  buildZakatReportHtml,
-} from '../templates/reportTemplates';
+  buildAnnualLedgerPdfBytes,
+  buildFinancialSummaryPdfBytes,
+  buildMemberStatementPdfBytes,
+  buildUnpaidShortListPdfBytes,
+  buildZakatReportPdfBytes,
+} from '../pdfBuilder';
 import {
-  downloadPdfToDevice,
+  downloadPdfBytesToDevice,
   exportAndShareCsv,
-  generateAndSharePdf,
-  loadOfflineUrduFontBase64,
+  previewOrSharePdfFile,
+  sharePdfBytes,
 } from '../exportService';
 
 export function AdminReportsScreen() {
@@ -84,11 +84,10 @@ export function AdminReportsScreen() {
 
   const zakatYear = activeFy ? Number.parseInt(activeFy.start_date.slice(0, 4), 10) : currentYearNum;
 
-  const runExport = async (key: string, fn: (urduFontBase64: string) => Promise<void>) => {
+  const runExport = async (key: string, fn: () => Promise<void>) => {
     setBusyKey(key);
     try {
-      const fontB64 = reportLang === 'ur' ? await loadOfflineUrduFontBase64() : '';
-      await fn(fontB64);
+      await fn();
     } catch (err) {
       const msg = err instanceof Error ? err.message : undefined;
       showAppAlert(t('common.errorGeneric'), msg);
@@ -97,12 +96,21 @@ export function AdminReportsScreen() {
     }
   };
 
-  const handleDownloadPdf = async (html: string, fileName: string) => {
-    const res = await downloadPdfToDevice(html, fileName);
+  const handleDownloadPdf = async (pdfBytes: Uint8Array, fileName: string) => {
+    const res = await downloadPdfBytesToDevice(pdfBytes, fileName);
     if (res.saved) {
       showAppAlert(
         t('common.confirm'),
         reportLang === 'ur' ? `فائل محفوظ ہو گئی: ${res.fileName}` : `Saved ${res.fileName}`,
+        [
+          { text: t('common.close'), style: 'cancel' },
+          {
+            text: reportLang === 'ur' ? 'کھولیں' : 'Open PDF',
+            style: 'default',
+            onPress: () => void previewOrSharePdfFile(res.cacheFile, res.fileName),
+          },
+        ],
+        'success',
       );
     }
   };
@@ -188,16 +196,14 @@ export function AdminReportsScreen() {
             disabled={!activeFy}
             onPress={() =>
               activeFy &&
-              void runExport('ledger-dl', async (urduFontBase64) => {
-                const html = buildAnnualLedgerHtml({
+              void runExport('ledger-dl', async () => {
+                const pdfBytes = await buildAnnualLedgerPdfBytes({
                   orgSettings: data?.orgSettings ?? null,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                 });
-                await handleDownloadPdf(html, `ledger-${activeFy.label}.pdf`);
+                await handleDownloadPdf(pdfBytes, `ledger-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -209,16 +215,14 @@ export function AdminReportsScreen() {
             disabled={!activeFy}
             onPress={() =>
               activeFy &&
-              void runExport('ledger-pdf', async (urduFontBase64) => {
-                const html = buildAnnualLedgerHtml({
+              void runExport('ledger-pdf', async () => {
+                const pdfBytes = await buildAnnualLedgerPdfBytes({
                   orgSettings: data?.orgSettings ?? null,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                 });
-                await generateAndSharePdf(html, `ledger-${activeFy.label}.pdf`);
+                await sharePdfBytes(pdfBytes, `ledger-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -251,7 +255,7 @@ export function AdminReportsScreen() {
             onPress={() =>
               activeFy &&
               data &&
-              void runExport('summary-dl', async (urduFontBase64) => {
+              void runExport('summary-dl', async () => {
                 let zakatDueTotal = 0;
                 let zakatPaidTotal = 0;
                 const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
@@ -273,18 +277,16 @@ export function AdminReportsScreen() {
                     zakatPaidTotal += z.paidAmount;
                   }
                 }
-                const html = buildFinancialSummaryHtml({
+                const pdfBytes = await buildFinancialSummaryPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                   zakatYear,
                   zakatDueTotal,
                   zakatPaidTotal,
                 });
-                await handleDownloadPdf(html, `summary-${activeFy.label}.pdf`);
+                await handleDownloadPdf(pdfBytes, `summary-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -297,7 +299,7 @@ export function AdminReportsScreen() {
             onPress={() =>
               activeFy &&
               data &&
-              void runExport('summary-pdf', async (urduFontBase64) => {
+              void runExport('summary-pdf', async () => {
                 let zakatDueTotal = 0;
                 let zakatPaidTotal = 0;
                 const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
@@ -319,18 +321,16 @@ export function AdminReportsScreen() {
                     zakatPaidTotal += z.paidAmount;
                   }
                 }
-                const html = buildFinancialSummaryHtml({
+                const pdfBytes = await buildFinancialSummaryPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                   zakatYear,
                   zakatDueTotal,
                   zakatPaidTotal,
                 });
-                await generateAndSharePdf(html, `summary-${activeFy.label}.pdf`);
+                await sharePdfBytes(pdfBytes, `summary-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -375,12 +375,10 @@ export function AdminReportsScreen() {
               activeFy &&
               activeMember &&
               data &&
-              void runExport('statement-dl', async (urduFontBase64) => {
-                const html = buildMemberStatementHtml({
+              void runExport('statement-dl', async () => {
+                const pdfBytes = await buildMemberStatementPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   member: activeMember,
                   fiscalYear: activeFy,
                   contributions: data.contributions,
@@ -392,7 +390,7 @@ export function AdminReportsScreen() {
                   zakatYear,
                   currentMonthStart: currentMonth,
                 });
-                await handleDownloadPdf(html, `statement-${activeMember.member_no}-${activeFy.label}.pdf`);
+                await handleDownloadPdf(pdfBytes, `statement-${activeMember.member_no ?? 'member'}-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -406,12 +404,10 @@ export function AdminReportsScreen() {
               activeFy &&
               activeMember &&
               data &&
-              void runExport('statement-pdf', async (urduFontBase64) => {
-                const html = buildMemberStatementHtml({
+              void runExport('statement-pdf', async () => {
+                const pdfBytes = await buildMemberStatementPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   member: activeMember,
                   fiscalYear: activeFy,
                   contributions: data.contributions,
@@ -423,7 +419,7 @@ export function AdminReportsScreen() {
                   zakatYear,
                   currentMonthStart: currentMonth,
                 });
-                await generateAndSharePdf(html, `statement-${activeMember.member_no}-${activeFy.label}.pdf`);
+                await sharePdfBytes(pdfBytes, `statement-${activeMember.member_no ?? 'member'}-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -443,13 +439,11 @@ export function AdminReportsScreen() {
             disabled={!data}
             onPress={() =>
               data &&
-              void runExport('zakat-dl', async (urduFontBase64) => {
+              void runExport('zakat-dl', async () => {
                 const setting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
-                const html = buildZakatReportHtml({
+                const pdfBytes = await buildZakatReportPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   year: zakatYear,
                   setting,
                   profiles: data.profiles,
@@ -457,7 +451,7 @@ export function AdminReportsScreen() {
                   assessments: data.zakatAssessments,
                   payments: data.zakatPayments,
                 });
-                await handleDownloadPdf(html, `zakat-${zakatYear}.pdf`);
+                await handleDownloadPdf(pdfBytes, `zakat-${zakatYear}.pdf`);
               })
             }
             style={styles.flex1}
@@ -469,13 +463,11 @@ export function AdminReportsScreen() {
             disabled={!data}
             onPress={() =>
               data &&
-              void runExport('zakat-pdf', async (urduFontBase64) => {
+              void runExport('zakat-pdf', async () => {
                 const setting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
-                const html = buildZakatReportHtml({
+                const pdfBytes = await buildZakatReportPdfBytes({
                   orgSettings: data.orgSettings,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   year: zakatYear,
                   setting,
                   profiles: data.profiles,
@@ -483,7 +475,7 @@ export function AdminReportsScreen() {
                   assessments: data.zakatAssessments,
                   payments: data.zakatPayments,
                 });
-                await generateAndSharePdf(html, `zakat-${zakatYear}.pdf`);
+                await sharePdfBytes(pdfBytes, `zakat-${zakatYear}.pdf`);
               })
             }
             style={styles.flex1}
@@ -502,17 +494,15 @@ export function AdminReportsScreen() {
             disabled={!activeFy}
             onPress={() =>
               activeFy &&
-              void runExport('unpaid-dl', async (urduFontBase64) => {
-                const html = buildUnpaidShortListHtml({
+              void runExport('unpaid-dl', async () => {
+                const pdfBytes = await buildUnpaidShortListPdfBytes({
                   orgSettings: data?.orgSettings ?? null,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                   currentMonthStart: currentMonth,
                 });
-                await handleDownloadPdf(html, `unpaid-${activeFy.label}.pdf`);
+                await handleDownloadPdf(pdfBytes, `unpaid-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
@@ -524,17 +514,15 @@ export function AdminReportsScreen() {
             disabled={!activeFy}
             onPress={() =>
               activeFy &&
-              void runExport('unpaid-pdf', async (urduFontBase64) => {
-                const html = buildUnpaidShortListHtml({
+              void runExport('unpaid-pdf', async () => {
+                const pdfBytes = await buildUnpaidShortListPdfBytes({
                   orgSettings: data?.orgSettings ?? null,
-                  lang: reportLang,
                   pendingSyncCount: pendingCount,
-                  urduFontBase64,
                   fiscalYear: activeFy,
                   summaries,
                   currentMonthStart: currentMonth,
                 });
-                await generateAndSharePdf(html, `unpaid-${activeFy.label}.pdf`);
+                await sharePdfBytes(pdfBytes, `unpaid-${activeFy.label}.pdf`);
               })
             }
             style={styles.flex1}
