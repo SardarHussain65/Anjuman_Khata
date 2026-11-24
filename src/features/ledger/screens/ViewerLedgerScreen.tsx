@@ -9,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
@@ -20,7 +19,7 @@ import {
   formatMonthYear,
   getKarachiCurrentMonthStart,
 } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { ComplianceBadge } from '@/core/ui/Badge';
 import { Card } from '@/core/ui/Card';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
@@ -45,7 +44,7 @@ const TOTAL_COL_WIDTH = 82;
 export function ViewerLedgerScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
   const [selectedFyId, setSelectedFyId] = useState<string | null>(null);
@@ -227,21 +226,59 @@ export function ViewerLedgerScreen() {
         </ScrollView>
       </View>
 
-      <FlashList
-        data={filteredSummaries}
-        keyExtractor={(item) => item.member.id}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
-        }
-        ListEmptyComponent={<EmptyState icon="grid-outline" />}
-        ListHeaderComponent={
-          filteredSummaries.length > 0 ? (
-            <View style={[styles.gridHeader, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
-              <View style={[styles.stickyCol, { borderEndColor: colors.borderStrong }]}>
+      {filteredSummaries.length === 0 ? (
+        <EmptyState icon="grid-outline" />
+      ) : (
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={styles.gridScrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          }
+        >
+          <View style={styles.splitTable}>
+            <View style={[styles.leftColumn, { borderEndColor: colors.borderStrong }]}>
+              <View style={[styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
                 <Text style={[styles.headerCellText, { color: colors.text }]}>{t('members.title')}</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsHeaderRow}>
+              {filteredSummaries.map((item) => {
+                const displayName =
+                  lang === 'ur' && item.member.full_name_ur ? item.member.full_name_ur : item.member.full_name;
+                const rowBadgeStatus =
+                  item.arrearsTotal > 0
+                    ? item.unpaidCount > 0
+                      ? 'unpaid'
+                      : 'short'
+                    : item.currentMonthCompliance?.status ?? null;
+                return (
+                  <View
+                    key={item.member.id}
+                    style={[styles.memberRowBox, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                  >
+                    <Text style={[styles.memberTitle, { color: colors.text }]} numberOfLines={1}>
+                      #{item.member.member_no} {displayName}
+                    </Text>
+                    <View style={styles.memberMetaRow}>
+                      {rowBadgeStatus ? (
+                        <ComplianceBadge status={rowBadgeStatus} compact />
+                      ) : null}
+                      {item.arrearsTotal > 0 ? (
+                        <Text style={[styles.arrearsPill, typography.numeric, { backgroundColor: colors.unpaidBg, color: colors.unpaidText }]}>
+                          -{item.arrearsTotal}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })}
+              <View style={[styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
+                <Text style={[styles.footerLabel, { color: colors.primary }]}>{t('common.total')}</Text>
+              </View>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                <View style={[styles.monthsHeaderRow, styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
                   {fyMonths.map((m) => (
                     <View key={m} style={styles.monthHeaderCell}>
                       <Text style={[styles.headerCellText, { color: colors.textSecondary }]}>
@@ -253,18 +290,66 @@ export function ViewerLedgerScreen() {
                     <Text style={[styles.headerCellText, { color: colors.primary }]}>{t('common.total')}</Text>
                   </View>
                 </View>
-              </ScrollView>
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          filteredSummaries.length > 0 ? (
-            <View style={[styles.gridFooter, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
-              <View style={[styles.stickyCol, { borderEndColor: colors.primaryBorder }]}>
-                <Text style={[styles.footerLabel, { color: colors.primary }]}>{t('common.total')}</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsHeaderRow}>
+
+                {filteredSummaries.map((item) => {
+                  const displayName =
+                    lang === 'ur' && item.member.full_name_ur ? item.member.full_name_ur : item.member.full_name;
+                  return (
+                    <View
+                      key={item.member.id}
+                      style={[styles.monthsRow, styles.dataRowHeight, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                    >
+                      {item.months.map((cell) => {
+                        const bg =
+                          cell.status === 'met'
+                            ? colors.metBg
+                            : cell.status === 'short'
+                              ? colors.shortBg
+                              : cell.status === 'unpaid'
+                                ? colors.unpaidBg
+                                : cell.status === 'advance'
+                                  ? colors.advanceBg
+                                  : colors.exemptBg;
+                        const fg =
+                          cell.status === 'met'
+                            ? colors.metText
+                            : cell.status === 'short'
+                              ? colors.shortText
+                              : cell.status === 'unpaid'
+                                ? colors.unpaidText
+                                : cell.status === 'advance'
+                                  ? colors.advanceText
+                                  : colors.exemptText;
+
+                        return (
+                          <Pressable
+                            key={cell.periodStart}
+                            onPress={() =>
+                              setInspectCell({
+                                memberName: displayName,
+                                memberNo: item.member.member_no,
+                                cell,
+                              })
+                            }
+                            style={[styles.monthCell, { backgroundColor: bg }]}
+                          >
+                            <Text style={[styles.cellValue, typography.numeric, { color: fg }]}>
+                              {cell.paidAmount > 0 ? cell.paidAmount : '—'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+
+                      <View style={[styles.totalCell, { backgroundColor: colors.surfaceSubtle }]}>
+                        <Text style={[styles.totalValue, typography.numeric, { color: colors.text }]}>
+                          {formatPKR(item.yearlyCharityTotal)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                <View style={[styles.monthsHeaderRow, styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
                   {totals.perMonth.map((amt, idx) => (
                     <View key={fyMonths[idx] ?? idx} style={styles.monthHeaderCell}>
                       <Text style={[styles.footerNum, typography.numeric, { color: colors.primary }]}>
@@ -278,85 +363,11 @@ export function ViewerLedgerScreen() {
                     </Text>
                   </View>
                 </View>
-              </ScrollView>
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const displayName =
-            lang === 'ur' && item.member.full_name_ur ? item.member.full_name_ur : item.member.full_name;
-          return (
-            <View style={[styles.ledgerRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-              <View style={[styles.stickyCol, { borderEndColor: colors.border }]}>
-                <Text style={[styles.memberTitle, { color: colors.text }]} numberOfLines={1}>
-                  #{item.member.member_no} {displayName}
-                </Text>
-                <View style={styles.memberMetaRow}>
-                  {item.currentMonthCompliance ? (
-                    <ComplianceBadge status={item.currentMonthCompliance.status} compact />
-                  ) : null}
-                  {item.member.tag ? (
-                    <Text style={[styles.tagPill, { backgroundColor: colors.surfaceSubtle, color: colors.textSecondary }]} numberOfLines={1}>
-                      {item.member.tag}
-                    </Text>
-                  ) : null}
-                </View>
               </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsRow}>
-                  {item.months.map((cell) => {
-                    const bg =
-                      cell.status === 'met'
-                        ? colors.metBg
-                        : cell.status === 'short'
-                          ? colors.shortBg
-                          : cell.status === 'unpaid'
-                            ? colors.unpaidBg
-                            : cell.status === 'advance'
-                              ? colors.advanceBg
-                              : colors.exemptBg;
-                    const fg =
-                      cell.status === 'met'
-                        ? colors.metText
-                        : cell.status === 'short'
-                          ? colors.shortText
-                          : cell.status === 'unpaid'
-                            ? colors.unpaidText
-                            : cell.status === 'advance'
-                              ? colors.advanceText
-                              : colors.exemptText;
-
-                    return (
-                      <Pressable
-                        key={cell.periodStart}
-                        onPress={() =>
-                          setInspectCell({
-                            memberName: displayName,
-                            memberNo: item.member.member_no,
-                            cell,
-                          })
-                        }
-                        style={[styles.monthCell, { backgroundColor: bg }]}
-                      >
-                        <Text style={[styles.cellValue, typography.numeric, { color: fg }]}>
-                          {cell.paidAmount > 0 ? cell.paidAmount : '—'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-
-                  <View style={[styles.totalCell, { backgroundColor: colors.surfaceSubtle }]}>
-                    <Text style={[styles.totalValue, typography.numeric, { color: colors.text }]}>
-                      {formatPKR(item.yearlyCharityTotal)}
-                    </Text>
-                  </View>
-                </View>
-              </ScrollView>
-            </View>
-          );
-        }}
-      />
+            </ScrollView>
+          </View>
+        </ScrollView>
+      )}
 
       {/* Read-Only Receipt Inspector Modal */}
       <Modal
@@ -420,19 +431,23 @@ const styles = StyleSheet.create({
   filterRow: { gap: 6 },
   filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
   filterChipText: { fontSize: 12, fontWeight: '600' },
-  gridHeader: { flexDirection: 'row', borderBottomWidth: 1, minHeight: 36, alignItems: 'center' },
-  gridFooter: { flexDirection: 'row', borderTopWidth: 1, minHeight: 44, alignItems: 'center', marginBottom: 24 },
-  stickyCol: { width: STICKY_NAME_WIDTH, paddingHorizontal: 10, paddingVertical: 8, borderEndWidth: 1, justifyContent: 'center', gap: 4 },
+  gridScroll: { flex: 1 },
+  gridScrollContent: { paddingBottom: 24 },
+  splitTable: { flexDirection: 'row' },
+  leftColumn: { width: STICKY_NAME_WIDTH, borderEndWidth: 1 },
+  headerRowBox: { height: 38, borderBottomWidth: 1, justifyContent: 'center', paddingHorizontal: 10 },
+  memberRowBox: { height: 58, paddingHorizontal: 10, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center', gap: 4 },
+  dataRowHeight: { height: 58, borderBottomWidth: StyleSheet.hairlineWidth },
+  footerRowBox: { height: 44, borderTopWidth: 1, justifyContent: 'center', paddingHorizontal: 10 },
   headerCellText: { fontSize: 11, fontWeight: '700' },
-  monthsHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  monthHeaderCell: { width: MONTH_COL_WIDTH, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-  totalHeaderCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-  ledgerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 58 },
+  monthsHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0 },
+  monthHeaderCell: { width: MONTH_COL_WIDTH + 4, alignItems: 'center', justifyContent: 'center' },
+  totalHeaderCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center' },
   memberTitle: { fontSize: 12, fontWeight: '700' },
   memberMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  tagPill: { fontSize: 10, fontWeight: '600', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
-  monthsRow: { flexDirection: 'row', alignItems: 'stretch' },
-  monthCell: { width: MONTH_COL_WIDTH, alignItems: 'center', justifyContent: 'center', margin: 2, borderRadius: 6, minHeight: 48 },
+  arrearsPill: { fontSize: 10, fontWeight: '700', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  monthsRow: { flexDirection: 'row', alignItems: 'center' },
+  monthCell: { width: MONTH_COL_WIDTH, height: 46, alignItems: 'center', justifyContent: 'center', marginHorizontal: 2, borderRadius: 6 },
   cellValue: { fontSize: 12, fontWeight: '700' },
   totalCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   totalValue: { fontSize: 12, fontWeight: '800' },

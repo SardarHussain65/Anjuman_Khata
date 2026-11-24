@@ -18,7 +18,7 @@ import {
   getKarachiCurrentMonthStart,
   getKarachiToday,
 } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
@@ -60,6 +60,15 @@ export function PaymentSheetModal(props: PaymentSheetModalProps) {
   return <PaymentSheetModalInner key={key} {...props} />;
 }
 
+type PaymentMethod = 'Cash' | 'Bank' | 'Easypaisa';
+
+function parsePaymentMethod(remark: string | null | undefined): PaymentMethod {
+  const lower = (remark ?? '').toLowerCase();
+  if (lower.includes('easypaisa')) return 'Easypaisa';
+  if (lower.includes('bank')) return 'Bank';
+  return 'Cash';
+}
+
 function PaymentSheetModalInner({
   visible,
   onClose,
@@ -75,7 +84,7 @@ function PaymentSheetModalInner({
 }: PaymentSheetModalProps) {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
   const isEditMode = Boolean(editingContribution);
@@ -94,7 +103,9 @@ function PaymentSheetModalInner({
   const [kind, setKind] = useState<ContributionKind>(
     editingContribution?.kind ?? (initPeriod > getKarachiCurrentMonthStart() ? 'advance' : 'monthly'),
   );
-  const [remark, setRemark] = useState<string>(editingContribution?.remark ?? '');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    editingContribution ? parsePaymentMethod(editingContribution.remark) : 'Cash',
+  );
   const [showVoidBox, setShowVoidBox] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
@@ -124,6 +135,14 @@ function PaymentSheetModalInner({
     parsedAmount > 0 &&
     parsedAmount < effectiveTier.minAmount;
 
+  const extraAmount =
+    selectedMember?.status === 'active' &&
+    effectiveTier != null &&
+    parsedAmount != null &&
+    parsedAmount > effectiveTier.minAmount
+      ? parsedAmount - effectiveTier.minAmount
+      : 0;
+
   const closedWarningYear = useMemo(() => {
     for (const m of selectedMonths) {
       const closed = findClosedFiscalYearForDate(m, fiscalYears);
@@ -147,6 +166,7 @@ function PaymentSheetModalInner({
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (!memberId) {
       Alert.alert(t('common.required'), t('members.title'));
       return;
@@ -157,6 +177,14 @@ function PaymentSheetModalInner({
     }
     if (selectedMonths.length === 0) {
       Alert.alert(t('common.required'), t('common.month'));
+      return;
+    }
+    if (closedWarningYear) {
+      Alert.alert(t('history.closedNotice'), closedWarningYear.label);
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn.trim())) {
+      Alert.alert(t('common.required'), `${t('common.date')} (YYYY-MM-DD)`);
       return;
     }
 
@@ -172,7 +200,7 @@ function PaymentSheetModalInner({
             period_start: selectedMonths[0],
             kind,
             paid_on: paidOn,
-            remark: remark.trim() || null,
+            remark: paymentMethod,
           },
           { actorId: adminId },
         );
@@ -194,7 +222,7 @@ function PaymentSheetModalInner({
               kind: computedKind,
               paid_on: paidOn,
               collected_by: adminId,
-              remark: remark.trim() || null,
+              remark: paymentMethod,
               void_reason: null,
               client_created_at: new Date().toISOString(),
             },
@@ -337,10 +365,18 @@ function PaymentSheetModalInner({
               placeholder={effectiveTier ? String(effectiveTier.minAmount) : '200'}
             />
 
-            {/* Quick Amount Chips */}
+            {/* Quick Amount Chips (includes 2x tier minimum for easy voluntary extra!) */}
             <View style={styles.quickAmounts}>
-              {[effectiveTier?.minAmount, 200, 500, 1000]
+              {[
+                effectiveTier?.minAmount,
+                effectiveTier ? effectiveTier.minAmount * 2 : undefined,
+                200,
+                400,
+                500,
+                1000,
+              ]
                 .filter((v, idx, arr): v is number => Boolean(v) && arr.indexOf(v) === idx)
+                .slice(0, 5)
                 .map((amt) => (
                   <Pressable
                     key={amt}
@@ -372,6 +408,19 @@ function PaymentSheetModalInner({
                 <Ionicons name="alert-circle" size={18} color={colors.warning} />
                 <Text style={[styles.warnText, { color: colors.shortText }]}>
                   {t('ledger.belowMinWarning', { min: formatPKR(effectiveTier.minAmount) })}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Voluntary extra amount confirmation (flexible generosity!) */}
+            {extraAmount > 0 && effectiveTier ? (
+              <View style={[styles.warnBox, { backgroundColor: colors.metBg, borderRadius: radius.md }]}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.metText} />
+                <Text style={[styles.warnText, { color: colors.metText }]}>
+                  {t('ledger.extraAmountNote', {
+                    min: formatPKR(effectiveTier.minAmount),
+                    extra: formatPKR(extraAmount),
+                  })}
                 </Text>
               </View>
             ) : null}
@@ -426,14 +475,20 @@ function PaymentSheetModalInner({
               ) : null}
             </View>
 
-            {/* Kind Selector (monthly / special / advance — NO zakat!) */}
+            {/* Kind Selector (monthly / special / advance — localized) */}
             <View style={styles.kindRow}>
-              {(['monthly', 'special', 'advance'] as const).map((k) => {
-                const active = kind === k;
+              {(
+                [
+                  { key: 'monthly', label: t('ledger.kindMonthly') },
+                  { key: 'special', label: t('ledger.kindSpecial') },
+                  { key: 'advance', label: t('ledger.kindAdvance') },
+                ] as const
+              ).map(({ key, label }) => {
+                const active = kind === key;
                 return (
                   <Pressable
-                    key={k}
-                    onPress={() => setKind(k)}
+                    key={key}
+                    onPress={() => setKind(key)}
                     style={[
                       styles.kindChip,
                       {
@@ -444,7 +499,7 @@ function PaymentSheetModalInner({
                     ]}
                   >
                     <Text style={[styles.kindText, { color: active ? colors.primary : colors.textSecondary }]}>
-                      {k}
+                      {label}
                     </Text>
                   </Pressable>
                 );
@@ -458,12 +513,54 @@ function PaymentSheetModalInner({
               placeholder="YYYY-MM-DD"
             />
 
-            <TextField
-              label={`${t('common.remark')} (${t('common.optional')})`}
-              value={remark}
-              onChangeText={setRemark}
-              placeholder="Cash / Bank / Note"
-            />
+            {/* Payment Method Checkboxes: Cash / Bank / Easypaisa */}
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>
+                {t('ledger.paymentMethod')}
+              </Text>
+              <View style={styles.methodRow}>
+                {(
+                  [
+                    { key: 'Cash', label: t('ledger.methodCash') },
+                    { key: 'Bank', label: t('ledger.methodBank') },
+                    { key: 'Easypaisa', label: t('ledger.methodEasypaisa') },
+                  ] as const
+                ).map(({ key, label }) => {
+                  const checked = paymentMethod === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked }}
+                      onPress={() => setPaymentMethod(key)}
+                      style={[
+                        styles.methodBox,
+                        {
+                          backgroundColor: checked ? colors.primarySoft : colors.surface,
+                          borderColor: checked ? colors.primary : colors.borderStrong,
+                          borderRadius: radius.md,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={checked ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={checked ? colors.primary : colors.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.methodText,
+                          { color: checked ? colors.primary : colors.text },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
 
             {/* Action Buttons */}
             <View style={styles.actionsRow}>
@@ -588,7 +685,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  kindText: { fontSize: 13, fontWeight: '600', textTransform: 'capitalize' },
+  kindText: { fontSize: 13, fontWeight: '600' },
+  methodRow: { flexDirection: 'row', gap: 8 },
+  methodBox: {
+    flex: 1,
+    minHeight: 46,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  methodText: { fontSize: 12, fontWeight: '700' },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   flexBtn: { flex: 1 },
   voidSection: { marginTop: 6 },

@@ -8,14 +8,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
 import { formatMonthShort, getKarachiCurrentMonthStart } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { ComplianceBadge } from '@/core/ui/Badge';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
@@ -44,7 +43,7 @@ export function AdminLedgerScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
   const [selectedFyId, setSelectedFyId] = useState<string | null>(null);
@@ -96,7 +95,7 @@ export function AdminLedgerScreen() {
         const hay = `${row.member.member_no} ${row.member.full_name} ${row.member.full_name_ur ?? ''} ${row.member.designation ?? ''} ${row.member.tag ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (filter === 'not_meeting') return row.isBelowMinimumCurrentCycle;
+      if (filter === 'not_meeting') return row.isBelowMinimumCurrentCycle || row.arrearsTotal > 0;
       if (filter === 'arrears') return row.arrearsTotal > 0;
       if (filter === 'unpaid_current') return row.currentMonthCompliance?.status === 'unpaid';
       if (filter === 'non_earning') return row.member.status === 'non_earning';
@@ -119,7 +118,7 @@ export function AdminLedgerScreen() {
       collected += row.yearlyCharityTotal;
       expected += row.expectedTotalToDate;
       arrears += row.arrearsTotal;
-      if (row.isBelowMinimumCurrentCycle) belowMinCount += 1;
+      if (row.isBelowMinimumCurrentCycle || row.arrearsTotal > 0) belowMinCount += 1;
       row.months.forEach((m, idx) => {
         perMonth[idx] = (perMonth[idx] ?? 0) + m.paidAmount;
       });
@@ -266,24 +265,71 @@ export function AdminLedgerScreen() {
         </ScrollView>
       </View>
 
-      {/* Master Paper-Register Grid (Sticky Member Column + Horizontal Months) */}
-      <FlashList
-        data={filteredSummaries}
-        keyExtractor={(item) => item.member.id}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
-        }
-        ListEmptyComponent={<EmptyState icon="grid-outline" />}
-        ListHeaderComponent={
-          filteredSummaries.length > 0 ? (
-            <View style={[styles.gridHeader, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
-              <View style={[styles.stickyCol, { borderEndColor: colors.borderStrong }]}>
+      {/* Master Paper-Register Grid: Sticky Left Member Column + ONE Synchronized Horizontal Scroll */}
+      {filteredSummaries.length === 0 ? (
+        <EmptyState icon="grid-outline" />
+      ) : (
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={styles.gridScrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          }
+        >
+          <View style={styles.splitTable}>
+            {/* Left Fixed Column: Header + Member Names + Footer */}
+            <View style={[styles.leftColumn, { borderEndColor: colors.borderStrong }]}>
+              <View style={[styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
                 <Text style={[styles.headerCellText, { color: colors.text }]}>
                   {t('members.title')}
                 </Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsHeaderRow}>
+
+              {filteredSummaries.map((item) => {
+                const displayName =
+                  lang === 'ur' && item.member.full_name_ur
+                    ? item.member.full_name_ur
+                    : item.member.full_name;
+                const rowBadgeStatus =
+                  item.arrearsTotal > 0
+                    ? item.unpaidCount > 0
+                      ? 'unpaid'
+                      : 'short'
+                    : item.currentMonthCompliance?.status ?? null;
+                return (
+                  <View
+                    key={item.member.id}
+                    style={[styles.memberRowBox, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                  >
+                    <Text style={[styles.memberTitle, { color: colors.text }]} numberOfLines={1}>
+                      #{item.member.member_no} {displayName}
+                    </Text>
+                    <View style={styles.memberMetaRow}>
+                      {rowBadgeStatus ? (
+                        <ComplianceBadge status={rowBadgeStatus} compact />
+                      ) : null}
+                      {item.arrearsTotal > 0 ? (
+                        <Text style={[styles.arrearsPill, typography.numeric, { backgroundColor: colors.unpaidBg, color: colors.unpaidText }]}>
+                          -{item.arrearsTotal}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })}
+
+              <View style={[styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
+                <Text style={[styles.footerLabel, { color: colors.primary }]}>
+                  {t('common.total')}
+                </Text>
+              </View>
+            </View>
+
+            {/* Right Synchronized Horizontal Scroll: Month Headers + All Member Cells + Monthly Totals */}
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                {/* Header Row */}
+                <View style={[styles.monthsHeaderRow, styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
                   {fyMonths.map((m) => (
                     <View key={m} style={styles.monthHeaderCell}>
                       <Text style={[styles.headerCellText, { color: colors.textSecondary }]}>
@@ -297,20 +343,69 @@ export function AdminLedgerScreen() {
                     </Text>
                   </View>
                 </View>
-              </ScrollView>
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          filteredSummaries.length > 0 ? (
-            <View style={[styles.gridFooter, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
-              <View style={[styles.stickyCol, { borderEndColor: colors.primaryBorder }]}>
-                <Text style={[styles.footerLabel, { color: colors.primary }]}>
-                  {t('common.total')}
-                </Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsHeaderRow}>
+
+                {/* Member Rows */}
+                {filteredSummaries.map((item) => (
+                  <View
+                    key={item.member.id}
+                    style={[styles.monthsRow, styles.dataRowHeight, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                  >
+                    {item.months.map((cell) => {
+                      const bg =
+                        cell.status === 'met'
+                          ? colors.metBg
+                          : cell.status === 'short'
+                            ? colors.shortBg
+                            : cell.status === 'unpaid'
+                              ? colors.unpaidBg
+                              : cell.status === 'advance'
+                                ? colors.advanceBg
+                                : colors.exemptBg;
+                      const fg =
+                        cell.status === 'met'
+                          ? colors.metText
+                          : cell.status === 'short'
+                            ? colors.shortText
+                            : cell.status === 'unpaid'
+                              ? colors.unpaidText
+                              : cell.status === 'advance'
+                                ? colors.advanceText
+                                : colors.exemptText;
+
+                      return (
+                        <Pressable
+                          key={cell.periodStart}
+                          onPress={() =>
+                            openQuickCollect(
+                              item.member.id,
+                              cell.periodStart,
+                              cell.entries[0] ?? null,
+                            )
+                          }
+                          style={[styles.monthCell, { backgroundColor: bg }]}
+                        >
+                          <Text style={[styles.cellValue, typography.numeric, { color: fg }]}>
+                            {cell.paidAmount > 0 ? cell.paidAmount : '—'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+
+                    <View style={[styles.totalCell, { backgroundColor: colors.surfaceSubtle }]}>
+                      <Text style={[styles.totalValue, typography.numeric, { color: colors.text }]}>
+                        {formatPKR(item.yearlyCharityTotal)}
+                      </Text>
+                      {item.arrearsTotal > 0 ? (
+                        <Text style={[styles.arrearsMini, typography.numeric, { color: colors.danger }]}>
+                          -{item.arrearsTotal}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+
+                {/* Footer Row */}
+                <View style={[styles.monthsHeaderRow, styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
                   {totals.perMonth.map((amt, idx) => (
                     <View key={fyMonths[idx] ?? idx} style={styles.monthHeaderCell}>
                       <Text style={[styles.footerNum, typography.numeric, { color: colors.primary }]}>
@@ -324,94 +419,11 @@ export function AdminLedgerScreen() {
                     </Text>
                   </View>
                 </View>
-              </ScrollView>
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const displayName =
-            lang === 'ur' && item.member.full_name_ur
-              ? item.member.full_name_ur
-              : item.member.full_name;
-          return (
-            <View style={[styles.ledgerRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-              {/* Sticky Member Name + Tag + Compliance Badge */}
-              <View style={[styles.stickyCol, { borderEndColor: colors.border }]}>
-                <Text style={[styles.memberTitle, { color: colors.text }]} numberOfLines={1}>
-                  #{item.member.member_no} {displayName}
-                </Text>
-                <View style={styles.memberMetaRow}>
-                  {item.currentMonthCompliance ? (
-                    <ComplianceBadge status={item.currentMonthCompliance.status} compact />
-                  ) : null}
-                  {item.member.tag ? (
-                    <Text style={[styles.tagPill, { backgroundColor: colors.surfaceSubtle, color: colors.textSecondary }]} numberOfLines={1}>
-                      {item.member.tag}
-                    </Text>
-                  ) : null}
-                </View>
               </View>
-
-              {/* Scrollable 12 Month Cells + Yearly Total */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.monthsRow}>
-                  {item.months.map((cell) => {
-                    const bg =
-                      cell.status === 'met'
-                        ? colors.metBg
-                        : cell.status === 'short'
-                          ? colors.shortBg
-                          : cell.status === 'unpaid'
-                            ? colors.unpaidBg
-                            : cell.status === 'advance'
-                              ? colors.advanceBg
-                              : colors.exemptBg;
-                    const fg =
-                      cell.status === 'met'
-                        ? colors.metText
-                        : cell.status === 'short'
-                          ? colors.shortText
-                          : cell.status === 'unpaid'
-                            ? colors.unpaidText
-                            : cell.status === 'advance'
-                              ? colors.advanceText
-                              : colors.exemptText;
-
-                    return (
-                      <Pressable
-                        key={cell.periodStart}
-                        onPress={() =>
-                          openQuickCollect(
-                            item.member.id,
-                            cell.periodStart,
-                            cell.entries[0] ?? null,
-                          )
-                        }
-                        style={[styles.monthCell, { backgroundColor: bg }]}
-                      >
-                        <Text style={[styles.cellValue, typography.numeric, { color: fg }]}>
-                          {cell.paidAmount > 0 ? cell.paidAmount : '—'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-
-                  <View style={[styles.totalCell, { backgroundColor: colors.surfaceSubtle }]}>
-                    <Text style={[styles.totalValue, typography.numeric, { color: colors.text }]}>
-                      {formatPKR(item.yearlyCharityTotal)}
-                    </Text>
-                    {item.arrearsTotal > 0 ? (
-                      <Text style={[styles.arrearsMini, typography.numeric, { color: colors.danger }]}>
-                        -{item.arrearsTotal}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              </ScrollView>
-            </View>
-          );
-        }}
-      />
+            </ScrollView>
+          </View>
+        </ScrollView>
+      )}
 
       {/* Thumb-Zone Record Payment FAB */}
       <Pressable
@@ -493,43 +505,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   filterChipText: { fontSize: 12, fontWeight: '600' },
-  gridHeader: {
-    flexDirection: 'row',
+  gridScroll: { flex: 1 },
+  gridScrollContent: { paddingBottom: 92 },
+  splitTable: { flexDirection: 'row' },
+  leftColumn: { width: STICKY_NAME_WIDTH, borderEndWidth: 1 },
+  headerRowBox: {
+    height: 38,
     borderBottomWidth: 1,
-    minHeight: 36,
-    alignItems: 'center',
-  },
-  gridFooter: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    marginBottom: 88,
-  },
-  stickyCol: {
-    width: STICKY_NAME_WIDTH,
+    justifyContent: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderEndWidth: 1,
+  },
+  memberRowBox: {
+    height: 58,
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
     gap: 4,
   },
+  dataRowHeight: {
+    height: 58,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  footerRowBox: {
+    height: 44,
+    borderTopWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
   headerCellText: { fontSize: 11, fontWeight: '700' },
-  monthsHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  monthHeaderCell: { width: MONTH_COL_WIDTH, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-  totalHeaderCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-  ledgerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 58 },
+  monthsHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0 },
+  monthHeaderCell: { width: MONTH_COL_WIDTH + 4, alignItems: 'center', justifyContent: 'center' },
+  totalHeaderCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center' },
   memberTitle: { fontSize: 12, fontWeight: '700' },
   memberMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  tagPill: { fontSize: 10, fontWeight: '600', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
-  monthsRow: { flexDirection: 'row', alignItems: 'stretch' },
+  arrearsPill: { fontSize: 10, fontWeight: '700', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  monthsRow: { flexDirection: 'row', alignItems: 'center' },
   monthCell: {
     width: MONTH_COL_WIDTH,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 2,
+    marginHorizontal: 2,
     borderRadius: 6,
-    minHeight: 48,
   },
   cellValue: { fontSize: 12, fontWeight: '700' },
   totalCell: {

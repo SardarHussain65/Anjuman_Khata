@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR, parsePKR } from '@/core/money';
 import { getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { TextField } from '@/core/ui/TextField';
@@ -29,7 +29,7 @@ import { useAuthStore } from '@/features/auth/store/authStore';
 export function AdminSettingsScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
   const { data, isLoading } = useRegisterSnapshot();
 
@@ -65,7 +65,9 @@ export function AdminSettingsScreen() {
       }),
     );
 
-    const unpaidOrShort = summaries.filter((s) => s.isBelowMinimumCurrentCycle);
+    const unpaidOrShort = summaries.filter(
+      (s) => s.isBelowMinimumCurrentCycle || s.arrearsTotal > 0,
+    );
     const byTier = new Map<string, { name: string; total: number; count: number }>();
     for (const s of summaries) {
       const tier = s.currentMonthCompliance?.effectiveTier;
