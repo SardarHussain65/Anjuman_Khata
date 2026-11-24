@@ -13,6 +13,7 @@ import {
   buildUnpaidShortListPdfBytes,
   buildZakatReportPdfBytes,
 } from '../pdfBuilder';
+import { uint8ArrayToBase64 } from '../exportService';
 import { parseRegisterCsv } from '../csvImportParser';
 import { computeMemberFiscalYearSummary } from '@/core/rules/compliance';
 import {
@@ -309,6 +310,12 @@ describe('Offline PDF HTML templates (EN + Urdu RTL) & CSV export', () => {
     });
     expect(headerOf(unpaidPdf)).toBe('%PDF-');
     expect(unpaidPdf.length).toBeGreaterThan(1000);
+
+    // Verify pure-JS base64 encoder produces exact byte-for-byte round-trip for native File.write(..., { encoding: 'base64' })
+    const b64 = uint8ArrayToBase64(ledgerPdf);
+    expect(b64.startsWith('JVBERi0')).toBe(true); // base64("%PDF-")
+    expect(atob(b64).slice(0, 5)).toBe('%PDF-');
+    expect(atob(b64).length).toBe(ledgerPdf.length);
   });
 });
 

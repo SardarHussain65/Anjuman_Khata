@@ -5,6 +5,40 @@ import { Directory, File, Paths } from 'expo-file-system';
 
 let cachedUrduFontBase64: string | null = null;
 
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/**
+ * Pure-JS Uint8Array -> Base64 encoder (zero Buffer/btoa dependency, works on Hermes Android & iOS).
+ * Required because expo-file-system's native File.write() accepts `Either<String, NativeArrayBuffer>`
+ * (not Uint8Array), whereas `write(base64, { encoding: 'base64' })` decodes directly to native ByteArray/Data.
+ */
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const len = bytes.length;
+  let out = '';
+  let i = 0;
+  for (; i + 2 < len; i += 3) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    out +=
+      BASE64_CHARS[(n >> 18) & 63] +
+      BASE64_CHARS[(n >> 12) & 63] +
+      BASE64_CHARS[(n >> 6) & 63] +
+      BASE64_CHARS[n & 63];
+  }
+  const rem = len - i;
+  if (rem === 1) {
+    const n = bytes[i] << 16;
+    out += BASE64_CHARS[(n >> 18) & 63] + BASE64_CHARS[(n >> 12) & 63] + '==';
+  } else if (rem === 2) {
+    const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
+    out +=
+      BASE64_CHARS[(n >> 18) & 63] +
+      BASE64_CHARS[(n >> 12) & 63] +
+      BASE64_CHARS[(n >> 6) & 63] +
+      '=';
+  }
+  return out;
+}
+
 /**
  * Loads the bundled Noto Naskh Arabic TTF font completely offline from app assets
  * and encodes it as base64 for embedding into HTML exports.
@@ -37,20 +71,21 @@ function normalizePdfName(fileName: string): string {
 }
 
 /**
- * Writes pure-JS generated PDF bytes to the app's cache directory.
- * Zero WebView / expo-print dependency — works 100% offline on every Android & iOS version.
+ * Writes pure-JS generated PDF bytes to the app's cache directory using native base64 decoding.
+ * Works 100% offline on every Android & iOS version (no WebView / expo-print / ArrayBuffer JSI issues).
  */
 export async function writePdfBytesToCache(
   pdfBytes: Uint8Array,
   fileName: string,
-): Promise<{ file: File; safeName: string }> {
+): Promise<{ file: File; safeName: string; base64: string }> {
   const safeName = normalizePdfName(fileName);
+  const base64 = uint8ArrayToBase64(pdfBytes);
   const file = new File(Paths.cache, safeName);
   if (file.exists) {
     file.delete();
   }
-  await file.write(pdfBytes);
-  return { file, safeName };
+  await file.write(base64, { encoding: 'base64' });
+  return { file, safeName, base64 };
 }
 
 /**
@@ -99,27 +134,27 @@ export async function previewOrSharePdfFile(file: File, safeName: string): Promi
 /**
  * Downloads/saves a real PDF directly onto the user's phone storage:
  * - Android: opens the native folder picker (e.g. Downloads), creates `<fileName>.pdf`,
- *   and writes the PDF binary bytes directly to that folder.
+ *   and writes the decoded PDF bytes directly to that folder.
  * - iOS: opens the native Share Sheet ("Save to Files").
  */
 export async function downloadPdfBytesToDevice(
   pdfBytes: Uint8Array,
   fileName: string,
 ): Promise<{ saved: boolean; canceled?: boolean; fileName: string; cacheFile: File }> {
-  const { file: cacheFile, safeName } = await writePdfBytesToCache(pdfBytes, fileName);
+  const { file: cacheFile, safeName, base64 } = await writePdfBytesToCache(pdfBytes, fileName);
 
   if (Platform.OS === 'android') {
     try {
       const pickedDir = await Directory.pickDirectoryAsync();
       const targetFile = pickedDir.createFile(safeName, 'application/pdf');
-      await targetFile.write(pdfBytes);
+      await targetFile.write(base64, { encoding: 'base64' });
       return { saved: true, fileName: safeName, cacheFile };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/cancel|dismiss|abort|user/i.test(msg)) {
         return { saved: false, canceled: true, fileName: safeName, cacheFile };
       }
-      // Fallback: if SAF folder picker is unavailable on a specific OEM ROM, open Share Sheet
+      // Fallback: if SAF folder picker is unavailable on a specific OEM ROM, open Share Sheet / Viewer
       await previewOrSharePdfFile(cacheFile, safeName);
       return { saved: false, fileName: safeName, cacheFile };
     }
