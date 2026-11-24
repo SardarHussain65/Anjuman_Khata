@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
@@ -23,7 +24,7 @@ type ZakatFilter = 'all' | 'unpaid' | 'paid';
 
 /** Passwordless Read-Only Community Annual Zakat Register (strictly separate from charity). */
 export function ViewerZakatScreen() {
-  const { colors, radius, typography } = useTheme();
+  const { colors, radius, typography, isDark } = useTheme();
   const { t } = useTranslation();
   const { data, isLoading } = useRegisterSnapshot();
 
@@ -129,35 +130,40 @@ export function ViewerZakatScreen() {
         })}
       </ScrollView>
 
-      <Card variant="zakat" style={styles.card}>
+      <LinearGradient
+        colors={isDark ? ['#5E4014', '#33220A'] : ['#A66B17', '#73460B']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.heroCard, { borderRadius: radius.xl }]}
+      >
         <View style={styles.titleRow}>
-          <Ionicons name="sparkles" size={18} color={colors.zakat} />
-          <Text style={[styles.cardTitle, { color: colors.zakatText }]}>
+          <Ionicons name="sparkles" size={18} color="#FDE68A" />
+          <Text style={styles.heroTitle}>
             {t('zakat.title')} · {selectedYear}
           </Text>
         </View>
-        <Text style={[styles.meta, { color: colors.textSecondary }]}>
+        <Text style={styles.heroSub}>
           {perPersonAmount > 0
             ? `${t('zakat.rateSummaryLine', { rate: formatPKR(perPersonAmount), people: totals.people })}${activeSetting?.basis_note ? ` · ${activeSetting.basis_note}` : ''}`
             : t('zakat.separateNote')}
         </Text>
         <View style={styles.statsRow}>
-          <View style={styles.statCol}>
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>{t('dashboard.zakatDue')}</Text>
-            <Text style={[styles.statVal, typography.numeric, { color: colors.text }]}>{formatPKR(totals.due)}</Text>
+          <View style={styles.statPill}>
+            <Text style={styles.statLabel}>{t('dashboard.zakatDue')}</Text>
+            <Text style={[styles.heroStatVal, typography.numeric]}>{formatPKR(totals.due)}</Text>
           </View>
-          <View style={styles.statCol}>
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>{t('dashboard.zakatPaid')}</Text>
-            <Text style={[styles.statVal, typography.numeric, { color: colors.metText }]}>{formatPKR(totals.paid)}</Text>
+          <View style={styles.statPill}>
+            <Text style={styles.statLabel}>{t('dashboard.zakatPaid')}</Text>
+            <Text style={[styles.heroStatVal, typography.numeric, { color: '#BBF7D0' }]}>{formatPKR(totals.paid)}</Text>
           </View>
-          <View style={styles.statCol}>
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>{t('dashboard.zakatBalance')}</Text>
-            <Text style={[styles.statVal, typography.numeric, { color: totals.remaining > 0 ? colors.danger : colors.zakatText }]}>
+          <View style={styles.statPill}>
+            <Text style={styles.statLabel}>{t('dashboard.zakatBalance')}</Text>
+            <Text style={[styles.heroStatVal, typography.numeric, { color: totals.remaining > 0 ? '#FECACA' : '#FDE68A' }]}>
               {formatPKR(totals.remaining)}
             </Text>
           </View>
         </View>
-      </Card>
+      </LinearGradient>
 
       {allSummaries.length > 0 ? (
         <View style={styles.filterBlock}>
@@ -283,10 +289,29 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1 },
   chipText: { fontSize: 13, fontWeight: '700' },
   card: { gap: 8 },
+  heroCard: {
+    padding: 16,
+    gap: 10,
+    elevation: 4,
+    shadowColor: '#73460B',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardTitle: { fontSize: 16, fontWeight: '800' },
-  statsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  statCol: { flex: 1, gap: 2 },
+  heroTitle: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
+  heroSub: { fontSize: 12, lineHeight: 17, color: 'rgba(255,255,255,0.82)' },
+  statsRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  statPill: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
+  heroStatVal: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
   statVal: { fontSize: 15, fontWeight: '800' },
   filterBlock: { gap: 8 },
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, paddingHorizontal: 12, minHeight: 40 },

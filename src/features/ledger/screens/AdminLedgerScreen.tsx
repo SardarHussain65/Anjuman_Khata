@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
@@ -40,7 +41,7 @@ const MONTH_COL_WIDTH = 66;
 const TOTAL_COL_WIDTH = 82;
 
 export function AdminLedgerScreen() {
-  const { colors, radius, typography } = useTheme();
+  const { colors, radius, typography, isDark } = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const lang = useAppLanguage();
@@ -143,50 +144,104 @@ export function AdminLedgerScreen() {
     return <LoadingState />;
   }
 
+  const collectionPct =
+    totals.expected > 0
+      ? Math.min(100, Math.round((totals.collected / totals.expected) * 100))
+      : totals.collected > 0
+        ? 100
+        : 0;
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* Fiscal Year Pills + Search */}
-      <View style={[styles.topControls, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View style={styles.topRowWithExport}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fyRow}>
-            {(data?.fiscalYears ?? []).map((fy) => {
-              const active = fy.id === activeFy?.id;
-              return (
-                <Pressable
-                  key={fy.id}
-                  onPress={() => setSelectedFyId(fy.id)}
-                  style={[
-                    styles.fyPill,
-                    {
-                      backgroundColor: active ? colors.primary : colors.surfaceSubtle,
-                      borderRadius: radius.pill,
-                    },
-                  ]}
-                >
-                  {fy.status === 'closed' ? (
-                    <Ionicons name="lock-closed" size={12} color={active ? '#FFFFFF' : colors.textMuted} />
-                  ) : null}
-                  <Text style={[styles.fyPillText, { color: active ? '#FFFFFF' : colors.text }]}>
-                    {fy.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/(admin)/reports')}
-            style={[styles.exportChip, { backgroundColor: colors.primarySoft, borderRadius: radius.pill }]}
-          >
-            <Ionicons name="document-text-outline" size={14} color={colors.primary} />
-            <Text style={[styles.fyPillText, { color: colors.primary }]}>PDF</Text>
-          </Pressable>
-        </View>
+      {/* Elevated Heritage Emerald Hero + Search & Filters */}
+      <View style={[styles.topControls, { backgroundColor: colors.background }]}>
+        <LinearGradient
+          colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.heroCard, { borderRadius: radius.xl }]}
+        >
+          <View style={styles.topRowWithExport}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fyRow}>
+              {(data?.fiscalYears ?? []).map((fy) => {
+                const active = fy.id === activeFy?.id;
+                return (
+                  <Pressable
+                    key={fy.id}
+                    onPress={() => setSelectedFyId(fy.id)}
+                    style={[
+                      styles.fyPill,
+                      {
+                        backgroundColor: active ? '#FFFFFF' : 'rgba(255,255,255,0.14)',
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    {fy.status === 'closed' ? (
+                      <Ionicons name="lock-closed" size={11} color={active ? '#0C503C' : '#E2F3EC'} />
+                    ) : null}
+                    <Text style={[styles.fyPillText, { color: active ? '#0C503C' : '#FFFFFF' }]}>
+                      {fy.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/(admin)/reports')}
+              style={[styles.exportChip, { borderRadius: radius.pill }]}
+            >
+              <Ionicons name="document-text-outline" size={14} color="#F6E2B3" />
+              <Text style={styles.exportChipText}>PDF</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.heroMainRow}>
+            <View>
+              <Text style={styles.heroLabel}>{t('ledger.collected')}</Text>
+              <Text style={[styles.heroBigNum, typography.numeric]}>
+                {formatPKR(totals.collected)}
+              </Text>
+            </View>
+            <View style={styles.pctBadge}>
+              <Text style={[styles.pctText, typography.numeric]}>{collectionPct}%</Text>
+            </View>
+          </View>
+
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${collectionPct}%` }]} />
+          </View>
+
+          <View style={styles.summaryStrip}>
+            <View style={styles.stripPill}>
+              <Text style={styles.stripLabel}>{t('ledger.expected')}</Text>
+              <Text style={[styles.stripVal, typography.numeric]}>
+                {formatPKR(totals.expected)}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.stripPill}
+              onPress={() => setFilter(filter === 'arrears' ? 'all' : 'arrears')}
+            >
+              <Text style={styles.stripLabel}>{t('ledger.arrears')}</Text>
+              <Text
+                style={[
+                  styles.stripVal,
+                  typography.numeric,
+                  { color: totals.arrears > 0 ? '#FCA5A5' : '#A7F3D0' },
+                ]}
+              >
+                {formatPKR(totals.arrears)}
+              </Text>
+            </Pressable>
+          </View>
+        </LinearGradient>
 
         <View
           style={[
             styles.searchBox,
-            { backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md },
+            { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg },
           ]}
         >
           <Ionicons name="search" size={16} color={colors.textMuted} />
@@ -202,31 +257,6 @@ export function AdminLedgerScreen() {
               <Ionicons name="close-circle" size={16} color={colors.textMuted} />
             </Pressable>
           ) : null}
-        </View>
-
-        {/* Summary Strip */}
-        <View style={styles.summaryStrip}>
-          <View style={styles.stripStat}>
-            <Text style={[styles.stripLabel, { color: colors.textMuted }]}>{t('ledger.collected')}</Text>
-            <Text style={[styles.stripVal, typography.numeric, { color: colors.primary }]}>
-              {formatPKR(totals.collected)}
-            </Text>
-          </View>
-          <View style={styles.stripStat}>
-            <Text style={[styles.stripLabel, { color: colors.textMuted }]}>{t('ledger.expected')}</Text>
-            <Text style={[styles.stripVal, typography.numeric, { color: colors.text }]}>
-              {formatPKR(totals.expected)}
-            </Text>
-          </View>
-          <Pressable
-            style={styles.stripStat}
-            onPress={() => setFilter(filter === 'arrears' ? 'all' : 'arrears')}
-          >
-            <Text style={[styles.stripLabel, { color: colors.textMuted }]}>{t('ledger.arrears')}</Text>
-            <Text style={[styles.stripVal, typography.numeric, { color: totals.arrears > 0 ? colors.danger : colors.metText }]}>
-              {formatPKR(totals.arrears)}
-            </Text>
-          </Pressable>
         </View>
 
         {/* Filter Chips */}
@@ -460,9 +490,17 @@ const styles = StyleSheet.create({
   topControls: {
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: 10,
-    gap: 8,
-    borderBottomWidth: 1,
+    paddingBottom: 8,
+    gap: 9,
+  },
+  heroCard: {
+    padding: 15,
+    gap: 9,
+    elevation: 4,
+    shadowColor: '#0C503C',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   topRowWithExport: {
     flexDirection: 'row',
@@ -473,18 +511,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  fyRow: { gap: 8 },
+  exportChipText: { fontSize: 12, fontWeight: '700', color: '#F6E2B3' },
+  fyRow: { gap: 6, flexGrow: 1 },
   fyPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
-  fyPillText: { fontSize: 13, fontWeight: '700' },
+  fyPillText: { fontSize: 12, fontWeight: '800' },
+  heroMainRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  heroLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.78)' },
+  heroBigNum: { fontSize: 25, fontWeight: '800', color: '#FFFFFF', marginTop: 1 },
+  pctBadge: {
+    backgroundColor: 'rgba(229, 185, 92, 0.22)',
+    borderColor: 'rgba(229, 185, 92, 0.5)',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  pctText: { color: '#F6E2B3', fontSize: 12, fontWeight: '800' },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#E5B95C',
+  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -492,12 +555,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     minHeight: 42,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
   },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
   summaryStrip: { flexDirection: 'row', gap: 8 },
-  stripStat: { flex: 1 },
-  stripLabel: { fontSize: 11, fontWeight: '600' },
-  stripVal: { fontSize: 14, fontWeight: '800' },
+  stripPill: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stripLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
+  stripVal: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
   filterRow: { gap: 6 },
   filterChip: {
     paddingHorizontal: 12,
@@ -506,8 +583,14 @@ const styles = StyleSheet.create({
   },
   filterChipText: { fontSize: 12, fontWeight: '600' },
   gridScroll: { flex: 1 },
-  gridScrollContent: { paddingBottom: 92 },
-  splitTable: { flexDirection: 'row' },
+  gridScrollContent: { paddingHorizontal: 14, paddingBottom: 98 },
+  splitTable: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(12, 80, 60, 0.14)',
+  },
   leftColumn: { width: STICKY_NAME_WIDTH, borderEndWidth: 1 },
   headerRowBox: {
     height: 38,

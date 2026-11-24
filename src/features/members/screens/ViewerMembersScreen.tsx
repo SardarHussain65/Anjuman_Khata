@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
@@ -31,6 +32,7 @@ import { resolveEffectiveTierForMonth } from '@/core/rules/tiers';
 export function ViewerMembersScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const lang = useAppLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
@@ -103,9 +105,29 @@ export function ViewerMembersScreen() {
             <Pressable onPress={() => setSelectedMember(item)}>
               <Card style={styles.memberCard}>
                 <View style={styles.rowBetween}>
+                  <View
+                    style={[
+                      styles.avatarCircle,
+                      {
+                        backgroundColor:
+                          item.status === 'active' ? colors.primarySoft : colors.surfaceSubtle,
+                        borderColor:
+                          item.status === 'active' ? colors.primaryBorder : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.avatarText,
+                        { color: item.status === 'active' ? colors.primary : colors.textSecondary },
+                      ]}
+                    >
+                      #{item.member_no}
+                    </Text>
+                  </View>
                   <View style={styles.flex1}>
                     <Text style={[styles.memberName, { color: colors.text }]}>
-                      #{item.member_no} · {displayName}
+                      {displayName}
                     </Text>
                     <Text style={[styles.meta, { color: colors.textSecondary }]}>
                       {item.designation ? `${item.designation} · ` : ''}
@@ -156,7 +178,7 @@ export function ViewerMembersScreen() {
                 <Ionicons name="close" size={24} color={colors.text} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={styles.sheetBody}>
+            <ScrollView contentContainerStyle={[styles.sheetBody, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}>
               {selectedSummary ? (
                 <>
                   <Card variant="charity" style={{ gap: 6 }}>
@@ -218,7 +240,16 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
   list: { padding: 14, paddingBottom: 24 },
   memberCard: { marginBottom: 10 },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  avatarCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 12, fontWeight: '800' },
   flex1: { flex: 1, gap: 2 },
   memberName: { fontSize: 15, fontWeight: '700' },
   meta: { fontSize: 12 },

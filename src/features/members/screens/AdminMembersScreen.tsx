@@ -1,7 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -16,14 +14,10 @@ import { formatPKR } from '@/core/money';
 import { getKarachiCurrentMonthStart } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
-import { Button } from '@/core/ui/Button';
-import { TextField } from '@/core/ui/TextField';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
 import { MemberStatus, ProfileRow } from '@/data/db/types';
 import { resolveEffectiveTierForMonth } from '@/core/rules/tiers';
-import { invokeAdminResetPassword } from '@/data/api/adminEdge';
-import { useSyncStatusStore } from '@/data/sync/statusStore';
 import { MemberFormModal } from '../components/MemberFormModal';
 import { TierAssignmentModal } from '../components/TierAssignmentModal';
 
@@ -31,7 +25,6 @@ export function AdminMembersScreen() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
   const lang = useAppLanguage();
-  const isOnline = useSyncStatusStore((s) => s.isOnline);
   const { data, isLoading } = useRegisterSnapshot();
 
   const [search, setSearch] = useState('');
@@ -39,9 +32,6 @@ export function AdminMembersScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<ProfileRow | null>(null);
   const [tierMember, setTierMember] = useState<ProfileRow | null>(null);
-  const [resetMember, setResetMember] = useState<ProfileRow | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [resetBusy, setResetBusy] = useState(false);
 
   const currentMonth = getKarachiCurrentMonthStart();
 
@@ -59,28 +49,6 @@ export function AdminMembersScreen() {
       return hay.includes(q);
     });
   }, [data, search, statusFilter]);
-
-  const handleResetPassword = async () => {
-    if (!resetMember || newPassword.length < 6) {
-      Alert.alert(t('common.required'), 'Password must be at least 6 characters.');
-      return;
-    }
-    if (!isOnline) {
-      Alert.alert(t('common.offline'), 'Password reset requires an internet connection.');
-      return;
-    }
-    setResetBusy(true);
-    try {
-      await invokeAdminResetPassword(resetMember.id, newPassword);
-      Alert.alert(t('common.confirm'), 'Password updated.');
-      setResetMember(null);
-      setNewPassword('');
-    } catch (err) {
-      Alert.alert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setResetBusy(false);
-    }
-  };
 
   if (isLoading && !data) {
     return <LoadingState />;
@@ -142,28 +110,68 @@ export function AdminMembersScreen() {
           return (
             <Card style={styles.memberCard}>
               <View style={styles.cardTop}>
+                <View
+                  style={[
+                    styles.avatarCircle,
+                    {
+                      backgroundColor:
+                        item.status === 'active' ? colors.primarySoft : colors.surfaceSubtle,
+                      borderColor:
+                        item.status === 'active' ? colors.primaryBorder : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.avatarText,
+                      {
+                        color:
+                          item.status === 'active' ? colors.primary : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    #{item.member_no}
+                  </Text>
+                </View>
                 <View style={styles.cardInfo}>
                   <Text style={[styles.memberName, { color: colors.text }]}>
-                    #{item.member_no} · {displayName}
+                    {displayName}
                   </Text>
                   <Text style={[styles.meta, { color: colors.textSecondary }]}>
                     {item.designation ? `${item.designation} · ` : ''}
                     {t(`memberStatus.${item.status}`)}
-                    {item.role === 'admin' ? ' · Admin' : ''}
                   </Text>
-                  <Text style={[styles.tierMeta, { color: colors.primary }]}>
-                    {item.status === 'non_earning'
-                      ? t('dashboard.noTierExempt')
-                      : eff
-                        ? `${lang === 'ur' && eff.tierNameUr ? eff.tierNameUr : eff.tierName} (${formatPKR(eff.minAmount)}/mo)`
-                        : t('dashboard.noTierExempt')}
-                  </Text>
-                </View>
-                {item.tag ? (
-                  <View style={[styles.tagChip, { backgroundColor: colors.surfaceSubtle, borderRadius: radius.pill }]}>
-                    <Text style={[styles.tagText, { color: colors.textSecondary }]}>{item.tag}</Text>
+                  <View
+                    style={[
+                      styles.tierPill,
+                      {
+                        backgroundColor:
+                          item.status === 'non_earning' || !eff
+                            ? colors.surfaceSubtle
+                            : colors.primarySoft,
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tierMeta,
+                        {
+                          color:
+                            item.status === 'non_earning' || !eff
+                              ? colors.textSecondary
+                              : colors.primary,
+                        },
+                      ]}
+                    >
+                      {item.status === 'non_earning'
+                        ? t('dashboard.noTierExempt')
+                        : eff
+                          ? `${lang === 'ur' && eff.tierNameUr ? eff.tierNameUr : eff.tierName} · ${formatPKR(eff.minAmount)}/mo`
+                          : t('dashboard.noTierExempt')}
+                    </Text>
                   </View>
-                ) : null}
+                </View>
               </View>
 
               <View style={styles.cardActions}>
@@ -185,19 +193,6 @@ export function AdminMembersScreen() {
                   >
                     <Ionicons name="layers-outline" size={14} color={colors.primary} />
                     <Text style={[styles.miniBtnText, { color: colors.primary }]}>{t('members.assignTier')}</Text>
-                  </Pressable>
-                ) : null}
-
-                {item.role === 'admin' ? (
-                  <Pressable
-                    onPress={() => {
-                      setResetMember(item);
-                      setNewPassword('');
-                    }}
-                    style={[styles.miniBtn, { borderColor: colors.border, borderRadius: radius.sm }]}
-                  >
-                    <Ionicons name="key-outline" size={14} color={colors.textSecondary} />
-                    <Text style={[styles.miniBtnText, { color: colors.textSecondary }]}>{t('members.resetPassword')}</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -232,33 +227,6 @@ export function AdminMembersScreen() {
         tiers={data?.tiers ?? []}
         memberTiers={data?.memberTiers ?? []}
       />
-
-      {/* Reset Password Modal */}
-      <Modal
-        visible={Boolean(resetMember)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setResetMember(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <Card style={styles.resetCard}>
-            <Text style={[styles.memberName, { color: colors.text }]}>
-              {t('members.resetPassword')} · #{resetMember?.member_no}
-            </Text>
-            <TextField
-              label={t('auth.password')}
-              secureTextEntry
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Min 6 characters"
-            />
-            <View style={styles.cardActions}>
-              <Button label={t('common.cancel')} variant="secondary" onPress={() => setResetMember(null)} style={styles.flexBtn} />
-              <Button label={t('common.save')} loading={resetBusy} onPress={handleResetPassword} style={styles.flexBtn} />
-            </View>
-          </Card>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -280,13 +248,21 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: '600' },
   list: { padding: 14, paddingBottom: 90 },
   memberCard: { marginBottom: 10, gap: 10 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  cardInfo: { flex: 1, gap: 2 },
-  memberName: { fontSize: 15, fontWeight: '700' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 13, fontWeight: '800' },
+  cardInfo: { flex: 1, gap: 3 },
+  memberName: { fontSize: 16, fontWeight: '700' },
   meta: { fontSize: 12 },
-  tierMeta: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  tagChip: { paddingHorizontal: 8, paddingVertical: 4 },
-  tagText: { fontSize: 11, fontWeight: '600' },
+  tierPill: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, marginTop: 2 },
+  tierMeta: { fontSize: 11, fontWeight: '700' },
   cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   miniBtn: {
     flexDirection: 'row',
@@ -310,12 +286,4 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  resetCard: { gap: 12 },
-  flexBtn: { flex: 1 },
 });

@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -8,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,9 +30,12 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+const APP_LOGO = require('../../../../assets/images/logo.png');
+
 export function LoginScreen() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
   const isSigningIn = useAuthStore((s) => s.isSigningIn);
@@ -72,7 +76,13 @@ export function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: Math.max(insets.top + 14, 24),
+              paddingBottom: Math.max(insets.bottom + 24, 36),
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {/* Top Row: Back to Register + EN | اردو Language Toggle */}
@@ -133,13 +143,8 @@ export function LoginScreen() {
 
           {/* Brand Emblem */}
           <View style={styles.brandBlock}>
-            <View
-              style={[
-                styles.emblem,
-                { backgroundColor: colors.primary, borderRadius: radius.xl },
-              ]}
-            >
-              <Ionicons name="book" size={34} color="#FFFFFF" />
+            <View style={styles.emblem}>
+              <Image source={APP_LOGO} style={styles.logoImg} resizeMode="cover" />
             </View>
             <Text style={[styles.brandTitle, { color: colors.text }]}>
               {t('app.name')}
@@ -271,11 +276,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emblem: {
-    width: 68,
-    height: 68,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+    width: 82,
+    height: 82,
+    borderRadius: 22,
+    overflow: 'hidden',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(229, 185, 92, 0.5)',
+    elevation: 6,
+    shadowColor: '#0C503C',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
   },
   brandTitle: {
     fontSize: 26,

@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ThemePreference, useTheme, useThemePreferenceStore } from '@/core/theme/ThemeProvider';
@@ -15,12 +17,14 @@ import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
 
+const APP_LOGO = require('../../../../assets/images/logo.png');
+
 /**
  * Community Viewer Settings & Admin Login entry point.
  * Normal users never need an account; Admins sign in here to unlock editing.
  */
 export function ViewerMoreScreen() {
-  const { colors, radius } = useTheme();
+  const { colors, radius, isDark } = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const lang = useAppLanguage();
@@ -33,10 +37,28 @@ export function ViewerMoreScreen() {
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
     >
+      {/* Branded Community Viewer Banner */}
+      <LinearGradient
+        colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.heroCard, { borderRadius: radius.xl }]}
+      >
+        <View style={styles.heroLogoWrap}>
+          <Image source={APP_LOGO} style={styles.heroLogo} resizeMode="cover" />
+        </View>
+        <View style={styles.heroCopy}>
+          <Text style={styles.heroTitle}>{t('app.name')}</Text>
+          <Text style={styles.heroSub}>{t('app.subtitle')}</Text>
+        </View>
+      </LinearGradient>
+
       {/* Admin Login Card */}
       <Card variant="charity" style={styles.card}>
         <View style={styles.row}>
-          <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+          <View style={[styles.shieldBox, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
+            <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+          </View>
           <View style={styles.flex1}>
             <Text style={[styles.title, { color: colors.text }]}>
               {t('auth.adminLogin', { defaultValue: 'Admin Login' })}
@@ -51,7 +73,7 @@ export function ViewerMoreScreen() {
         </View>
         <Button
           label={t('auth.adminLogin', { defaultValue: 'Admin Login' })}
-          onPress={() => router.push('/(auth)')}
+          onPress={() => router.push('/(auth)/login')}
         />
       </Card>
 
@@ -78,7 +100,7 @@ export function ViewerMoreScreen() {
           })}
         </View>
 
-        <Text style={[styles.title, { color: colors.text, marginTop: 6 }]}>{t('settings.theme')}</Text>
+        <Text style={[styles.title, { color: colors.text, marginTop: 8 }]}>{t('settings.theme')}</Text>
         <View style={styles.segmentRow}>
           {(['system', 'light', 'dark'] as ThemePreference[]).map((pref) => {
             const active = themePref === pref;
@@ -112,12 +134,36 @@ export function ViewerMoreScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, gap: 14, paddingBottom: 32 },
+  heroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+    gap: 14,
+    elevation: 4,
+    shadowColor: '#0C503C',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  heroLogoWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(229, 185, 92, 0.55)',
+  },
+  heroLogo: { width: '100%', height: '100%' },
+  heroCopy: { flex: 1, gap: 3 },
+  heroTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '800' },
+  heroSub: { color: 'rgba(255,255,255,0.78)', fontSize: 12, lineHeight: 17 },
   card: { gap: 10 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  shieldBox: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   flex1: { flex: 1, gap: 3 },
   title: { fontSize: 15, fontWeight: '700' },
   meta: { fontSize: 13, lineHeight: 19 },
   segmentRow: { flexDirection: 'row', gap: 8 },
   segmentBtn: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
-  segmentText: { fontSize: 13, fontWeight: '600' },
+  segmentText: { fontSize: 13, fontWeight: '700' },
 });

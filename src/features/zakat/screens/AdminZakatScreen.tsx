@@ -9,13 +9,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
 import { formatDateShort, getKarachiToday } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
-import { Button } from '@/core/ui/Button';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
 import { ZakatMemberRow, ZakatPaymentRow } from '@/data/db/types';
@@ -29,7 +29,7 @@ type ZakatViewTab = 'register' | 'payments';
 type ZakatFilter = 'all' | 'unpaid' | 'paid';
 
 export function AdminZakatScreen() {
-  const { colors, radius, typography } = useTheme();
+  const { colors, radius, typography, isDark } = useTheme();
   const { t } = useTranslation();
   const lang = useAppLanguage();
   const { data, isLoading } = useRegisterSnapshot();
@@ -185,17 +185,22 @@ export function AdminZakatScreen() {
           </Pressable>
         </View>
 
-        {/* Gold Summary Card — Strictly Isolated from Monthly Charity */}
-        <Card variant="zakat" style={styles.heroCard}>
+        {/* Antique Gold Gradient Hero Summary Card — Strictly Isolated from Monthly Charity */}
+        <LinearGradient
+          colors={isDark ? ['#5E4014', '#33220A'] : ['#A66B17', '#73460B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.heroCard, { borderRadius: radius.xl }]}
+        >
           <View style={styles.heroHeader}>
-            <Ionicons name="sparkles" size={18} color={colors.zakat} />
-            <Text style={[styles.heroTitle, { color: colors.zakatText }]}>
+            <Ionicons name="sparkles" size={18} color="#FDE68A" />
+            <Text style={styles.heroTitle}>
               {t('zakat.title')} · {selectedYear}
             </Text>
           </View>
 
           {perPersonAmount > 0 ? (
-            <Text style={[styles.subNote, { color: colors.textSecondary }]}>
+            <Text style={styles.subNote}>
               {t('zakat.rateSummaryLine', {
                 rate: formatPKR(perPersonAmount),
                 people: totals.people,
@@ -205,59 +210,64 @@ export function AdminZakatScreen() {
           ) : (
             <Pressable
               onPress={() => setSettingsOpen(true)}
-              style={[styles.ratePrompt, { backgroundColor: colors.surface, borderColor: colors.zakatBorder, borderRadius: radius.md }]}
+              style={[styles.ratePrompt, { borderRadius: radius.md }]}
             >
-              <Ionicons name="alert-circle-outline" size={16} color={colors.zakat} />
-              <Text style={[styles.ratePromptText, { color: colors.zakatText }]}>
+              <Ionicons name="alert-circle-outline" size={16} color="#FDE68A" />
+              <Text style={styles.ratePromptText}>
                 {t('zakat.setRatePrompt', { year: selectedYear })}
               </Text>
             </Pressable>
           )}
 
           <View style={styles.statsRow}>
-            <View style={styles.statCol}>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('dashboard.zakatDue')}</Text>
-              <Text style={[styles.statVal, typography.numeric, { color: colors.text }]}>
+            <View style={styles.statPill}>
+              <Text style={styles.statLabel}>{t('dashboard.zakatDue')}</Text>
+              <Text style={[styles.statVal, typography.numeric]}>
                 {formatPKR(totals.due)}
               </Text>
             </View>
-            <View style={styles.statCol}>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('dashboard.zakatPaid')}</Text>
-              <Text style={[styles.statVal, typography.numeric, { color: colors.metText }]}>
+            <View style={styles.statPill}>
+              <Text style={styles.statLabel}>{t('dashboard.zakatPaid')}</Text>
+              <Text style={[styles.statVal, typography.numeric, { color: '#BBF7D0' }]}>
                 {formatPKR(totals.paid)}
               </Text>
             </View>
-            <View style={styles.statCol}>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('dashboard.zakatBalance')}</Text>
-              <Text style={[styles.statVal, typography.numeric, { color: totals.remaining > 0 ? colors.danger : colors.zakatText }]}>
+            <View style={styles.statPill}>
+              <Text style={styles.statLabel}>{t('dashboard.zakatBalance')}</Text>
+              <Text style={[styles.statVal, typography.numeric, { color: totals.remaining > 0 ? '#FECACA' : '#FDE68A' }]}>
                 {formatPKR(totals.remaining)}
               </Text>
             </View>
           </View>
 
           <View style={styles.actionRow}>
-            <Button
-              label={t('zakat.addMember')}
-              variant="zakat"
+            <Pressable
               onPress={() => {
                 setEditingMember(null);
                 setMemberFormOpen(true);
               }}
-              style={styles.flex1}
-            />
-            <Button
-              label={t('zakat.recordPayment')}
-              variant="secondary"
+              style={[styles.heroBtnPrimary, { borderRadius: radius.md }]}
+            >
+              <Ionicons name="person-add-outline" size={16} color="#73460B" />
+              <Text style={styles.heroBtnPrimaryText}>{t('zakat.addMember')}</Text>
+            </Pressable>
+            <Pressable
               disabled={zakatMembers.length === 0}
               onPress={() => {
                 setEditingPay(null);
                 setPayMemberId(zakatMembers[0]?.id ?? null);
                 setPayOpen(true);
               }}
-              style={styles.flex1}
-            />
+              style={[
+                styles.heroBtnGhost,
+                { borderRadius: radius.md, opacity: zakatMembers.length === 0 ? 0.5 : 1 },
+              ]}
+            >
+              <Ionicons name="cash-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.heroBtnGhostText}>{t('zakat.recordPayment')}</Text>
+            </Pressable>
           </View>
-        </Card>
+        </LinearGradient>
 
         {/* Sub-tabs: Registered Families / Payments Log */}
         <View style={styles.segmentRow}>
@@ -518,17 +528,62 @@ const styles = StyleSheet.create({
   yearChipText: { fontSize: 13, fontWeight: '700' },
   settingsBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1 },
   settingsBtnText: { fontSize: 12, fontWeight: '700' },
-  heroCard: { gap: 10 },
+  heroCard: {
+    padding: 16,
+    gap: 10,
+    elevation: 4,
+    shadowColor: '#73460B',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroTitle: { fontSize: 16, fontWeight: '800' },
-  subNote: { fontSize: 12, lineHeight: 17 },
-  ratePrompt: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderWidth: 1 },
-  ratePromptText: { flex: 1, fontSize: 12, fontWeight: '600' },
+  heroTitle: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
+  subNote: { fontSize: 12, lineHeight: 17, color: 'rgba(255,255,255,0.82)' },
+  ratePrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  ratePromptText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#FEF3C7' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  statCol: { flex: 1, gap: 2 },
-  statLabel: { fontSize: 11 },
-  statVal: { fontSize: 15, fontWeight: '800' },
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  statPill: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
+  statVal: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  heroBtnPrimary: {
+    flex: 1,
+    minHeight: 44,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  heroBtnPrimaryText: { color: '#73460B', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  heroBtnGhost: {
+    flex: 1,
+    minHeight: 44,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  heroBtnGhostText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', textAlign: 'center' },
   flex1: { flex: 1 },
   segmentRow: { flexDirection: 'row', gap: 8 },
   segmentBtn: { flex: 1, minHeight: 40, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
