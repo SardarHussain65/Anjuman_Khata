@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -9,10 +8,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { ZakatMemberRow, ZakatMemberStatus } from '@/data/db/types';
 import { localInsert, localUpdate } from '@/data/sync/syncEngine';
@@ -45,6 +46,7 @@ function ZakatMemberFormModalInner({
 }: ZakatMemberFormModalProps) {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
   const isEdit = Boolean(editingMember);
@@ -75,13 +77,13 @@ function ZakatMemberFormModalInner({
     if (saving) return;
     const parsedNo = Number.parseInt(memberNo, 10);
     if (!payerName.trim() || !Number.isInteger(parsedNo) || parsedNo <= 0) {
-      Alert.alert(t('common.required'), `${t('members.memberNo')} & ${t('zakat.payerName')}`);
+      showAppAlert(t('common.required'), `${t('members.memberNo')} & ${t('zakat.payerName')}`);
       return;
     }
 
     const finalCount = isFamily ? Number.parseInt(familyCountInput, 10) : 1;
     if (isFamily && (!Number.isInteger(finalCount) || finalCount < 1 || finalCount > 200)) {
-      Alert.alert(t('common.required'), t('zakat.peopleCount'));
+      showAppAlert(t('common.required'), t('zakat.peopleCount'));
       return;
     }
 
@@ -118,7 +120,7 @@ function ZakatMemberFormModalInner({
       }
       onClose();
     } catch (err) {
-      Alert.alert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
+      showAppAlert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
     } finally {
       setSaving(false);
     }
@@ -148,7 +150,10 @@ function ZakatMemberFormModalInner({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Serial # + Payer Name */}
             <View style={styles.nameRow}>
               <View style={styles.noCol}>

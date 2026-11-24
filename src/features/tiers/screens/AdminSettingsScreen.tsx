@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -17,6 +16,7 @@ import { getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
@@ -97,7 +97,7 @@ export function AdminSettingsScreen() {
     const startM = Number.parseInt(fyStartMonth ?? String(org.fiscal_year_start_month), 10);
     const grace = Number.parseInt(graceDays ?? String(org.grace_days), 10);
     if (startM < 1 || startM > 12 || grace < 0 || grace > 31) {
-      Alert.alert(t('common.required'), 'Start month must be 1–12 and grace days 0–31.');
+      showAppAlert(t('common.required'), 'Start month must be 1–12 and grace days 0–31.');
       return;
     }
     setSavingOrg(true);
@@ -113,7 +113,7 @@ export function AdminSettingsScreen() {
         },
         { actorId: adminId },
       );
-      Alert.alert(t('common.confirm'), 'Organization settings saved.');
+      showAppAlert(t('common.confirm'), 'Organization settings saved.');
     } finally {
       setSavingOrg(false);
     }
@@ -123,7 +123,7 @@ export function AdminSettingsScreen() {
     if (!editingTier) return;
     const minVal = parsePKR(newTierMin);
     if (!minVal || minVal <= 0) {
-      Alert.alert(t('common.required'), t('common.amount'));
+      showAppAlert(t('common.required'), t('common.amount'));
       return;
     }
     setSavingTier(true);

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -9,10 +8,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { parsePKR } from '@/core/money';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { ZakatSettingRow } from '@/data/db/types';
 import { localInsert, localUpdate } from '@/data/sync/syncEngine';
@@ -45,6 +46,7 @@ function ZakatSettingsModalInner({
 }: ZakatSettingsModalProps) {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
   const [perPersonInput, setPerPersonInput] = useState(
@@ -59,7 +61,7 @@ function ZakatSettingsModalInner({
     if (saving) return;
     const perPerson = parsePKR(perPersonInput);
     if (perPerson == null || perPerson <= 0) {
-      Alert.alert(t('common.required'), t('zakat.perPersonRate'));
+      showAppAlert(t('common.required'), t('zakat.perPersonRate'));
       return;
     }
 
@@ -90,7 +92,7 @@ function ZakatSettingsModalInner({
       }
       onClose();
     } catch {
-      Alert.alert(t('common.errorGeneric'));
+      showAppAlert(t('common.errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -120,7 +122,10 @@ function ZakatSettingsModalInner({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={[styles.desc, { color: colors.textSecondary }]}>
               {t('zakat.perPersonHint')}
             </Text>

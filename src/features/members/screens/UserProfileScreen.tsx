@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import { formatDateShort } from '@/core/dates';
 import { formatPKR } from '@/core/money';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { useRegisterSnapshot } from '@/data/db/queries';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { getMemberTierHistory } from '@/core/rules/tiers';
@@ -39,7 +39,7 @@ export function UserProfileScreen() {
   }, [data, memberId]);
 
   const handleSignOut = () => {
-    Alert.alert(t('auth.signOut'), t('auth.signOutConfirm'), [
+    showAppAlert(t('auth.signOut'), t('auth.signOutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('auth.signOut'), style: 'destructive', onPress: () => void signOut() },
     ]);
@@ -54,7 +54,8 @@ export function UserProfileScreen() {
     >
       <Card style={styles.card}>
         <Text style={[styles.memberNo, { color: colors.primary }]}>
-          #{authProfile?.member_no} · {t(`memberStatus.${authProfile?.status ?? 'active'}`)}
+          {authProfile?.member_no != null ? `#${authProfile.member_no} · ` : ''}
+          {t(`memberStatus.${authProfile?.status ?? 'active'}`)}
         </Text>
         <Text style={[styles.name, { color: colors.text }]}>
           {lang === 'ur' && authProfile?.full_name_ur

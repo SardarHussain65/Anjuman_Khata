@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { hydrateLanguagePreference } from '@/core/i18n';
 import { ThemeProvider, useTheme } from '@/core/theme/ThemeProvider';
-import { AppErrorBoundary, LoadingState } from '@/core/ui/ScreenState';
+import { AppErrorBoundary } from '@/core/ui/ScreenState';
+import { AppDialogHost } from '@/core/ui/AppDialog';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useSyncScheduler } from '@/data/sync/scheduler';
 import { InitialSyncBanner, SyncDrawerModal } from '@/data/sync/SyncStatusUI';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const APP_LOGO = require('../../assets/images/logo.png');
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +27,22 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function BrandedSplashOverlay() {
+  return (
+    <LinearGradient
+      colors={['#0F5D46', '#0C503C', '#073326']}
+      style={[StyleSheet.absoluteFill, styles.splash]}
+    >
+      <View style={styles.splashLogoWrap}>
+        <Image source={APP_LOGO} style={styles.splashLogo} resizeMode="contain" />
+      </View>
+      <Text style={styles.splashTitle}>Anjuman Khata</Text>
+      <Text style={styles.splashTitleUr}>انجمن کھاتہ</Text>
+      <ActivityIndicator size="small" color="#E5B95C" style={styles.splashSpinner} />
+    </LinearGradient>
+  );
+}
 
 function RootNavigator() {
   const { isDark } = useTheme();
@@ -38,12 +61,18 @@ function RootNavigator() {
   const ready = langReady && !isHydrating;
   const isAdmin = ready && Boolean(session && profile && profile.role === 'admin');
 
+  useEffect(() => {
+    if (ready) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [ready]);
+
   // Sync runs in BOTH Read-Only Community Viewer mode (pull-only) and Admin mode (push + pull)
   useSyncScheduler(ready);
 
   return (
     <View style={styles.root}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style={!ready ? 'light' : isDark ? 'light' : 'dark'} />
       <InitialSyncBanner />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!isAdmin}>
@@ -54,12 +83,9 @@ function RootNavigator() {
           <Stack.Screen name="(admin)" />
         </Stack.Protected>
       </Stack>
-      {!ready ? (
-        <View style={StyleSheet.absoluteFill}>
-          <LoadingState />
-        </View>
-      ) : null}
+      {!ready ? <BrandedSplashOverlay /> : null}
       <SyncDrawerModal />
+      <AppDialogHost />
     </View>
   );
 }
@@ -82,4 +108,42 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  splash: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  splashLogoWrap: {
+    width: 112,
+    height: 112,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0C503C',
+    borderWidth: 2,
+    borderColor: 'rgba(229, 185, 92, 0.45)',
+    marginBottom: 8,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  splashLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  splashTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  splashTitleUr: {
+    color: '#E5B95C',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  splashSpinner: {
+    marginTop: 18,
+  },
 });

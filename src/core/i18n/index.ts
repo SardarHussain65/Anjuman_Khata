@@ -1,6 +1,7 @@
 import i18n, { changeLanguage, t as i18nT } from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { Alert, I18nManager } from 'react-native';
+import { I18nManager } from 'react-native';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import * as SecureStore from 'expo-secure-store';
 import * as Updates from 'expo-updates';
 import { create } from 'zustand';
@@ -86,7 +87,7 @@ export async function switchLanguage(nextLang: AppLanguage): Promise<void> {
     try {
       await Updates.reloadAsync();
     } catch {
-      Alert.alert(
+      showAppAlert(
         i18nT('settings.rtlRestartTitle'),
         i18nT('settings.rtlRestartMessage'),
       );

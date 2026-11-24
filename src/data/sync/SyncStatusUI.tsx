@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -10,10 +9,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { resetLocalDatabase } from '../db/database';
 import { QuarantineRow } from '../db/types';
 import { useSyncStatusStore } from './statusStore';
@@ -95,6 +96,7 @@ export function SyncStatusPill() {
 export function InitialSyncBanner() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const active = useSyncStatusStore((s) => s.isInitialPulling);
   const done = useSyncStatusStore((s) => s.initialPullDoneTables);
   const total = useSyncStatusStore((s) => s.initialPullTotalTables);
@@ -103,7 +105,7 @@ export function InitialSyncBanner() {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <View style={[styles.initialBanner, { backgroundColor: colors.primary }]}>
+    <View style={[styles.initialBanner, { backgroundColor: colors.primary, paddingTop: Math.max(insets.top + 8, 12) }]}>
       <ActivityIndicator size="small" color="#FFFFFF" />
       <View style={styles.initialBannerCopy}>
         <Text style={styles.initialTitle}>{t('sync.initialSyncTitle')} ({pct}%)</Text>
@@ -120,6 +122,7 @@ export function InitialSyncBanner() {
 export function SyncDrawerModal() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const open = useSyncStatusStore((s) => s.drawerOpen);
   const setDrawerOpen = useSyncStatusStore((s) => s.setDrawerOpen);
   const status = useSyncStatusStore((s) => s.status);
@@ -168,7 +171,7 @@ export function SyncDrawerModal() {
   };
 
   const handleFreshResync = () => {
-    Alert.alert(t('sync.resetCache'), t('sync.resetCacheConfirm'), [
+    showAppAlert(t('sync.resetCache'), t('sync.resetCacheConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('common.confirm'),
@@ -216,7 +219,7 @@ export function SyncDrawerModal() {
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.sheetBody}>
+          <ScrollView contentContainerStyle={[styles.sheetBody, { paddingBottom: Math.max(insets.bottom + 20, 32) }]}>
             <Card>
               <View style={styles.rowBetween}>
                 <Text style={[styles.metaLabel, { color: colors.textSecondary }]}>

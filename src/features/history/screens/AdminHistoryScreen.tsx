@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -25,6 +24,7 @@ import {
 import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
@@ -138,7 +138,7 @@ export function AdminHistoryScreen() {
   );
 
   const handleCloseYear = (fy: FiscalYearRow) => {
-    Alert.alert(
+    showAppAlert(
       `${t('history.closeYear')} ${fy.label}`,
       'Closing this year locks all contribution and Zakat edits for this period.',
       [
@@ -171,7 +171,7 @@ export function AdminHistoryScreen() {
   const handleReopenYear = async () => {
     if (!reopenTarget) return;
     if (!reopenReason.trim()) {
-      Alert.alert(t('common.required'), t('history.reopenReasonLabel'));
+      showAppAlert(t('common.required'), t('history.reopenReasonLabel'));
       return;
     }
     setFyBusy(true);
@@ -197,7 +197,7 @@ export function AdminHistoryScreen() {
   const handleCreateFiscalYear = async () => {
     const startYear = Number.parseInt(newFyStartYear, 10);
     if (!Number.isInteger(startYear) || startYear < 2000 || startYear > 2100) {
-      Alert.alert(t('common.required'), 'Enter a valid 4-digit year (e.g. 2027).');
+      showAppAlert(t('common.required'), 'Enter a valid 4-digit year (e.g. 2027).');
       return;
     }
     const startMonth = data?.orgSettings?.fiscal_year_start_month ?? 1;

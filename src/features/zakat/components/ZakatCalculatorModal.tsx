@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -14,6 +13,7 @@ import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR, parsePKR } from '@/core/money';
 import { getCurrentLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
 import { ProfileRow, ZakatAssetsBreakdown, ZakatSettingRow } from '@/data/db/types';
@@ -98,11 +98,11 @@ function ZakatCalculatorModalInner({
 
   const handleSave = async () => {
     if (!setting || !preview) {
-      Alert.alert(t('common.required'), 'Configure Zakat nisab settings for this year first.');
+      showAppAlert(t('common.required'), 'Configure Zakat nisab settings for this year first.');
       return;
     }
     if (!memberId) {
-      Alert.alert(t('common.required'), t('members.title'));
+      showAppAlert(t('common.required'), t('members.title'));
       return;
     }
 
@@ -127,7 +127,7 @@ function ZakatCalculatorModalInner({
       );
       onClose();
     } catch {
-      Alert.alert(t('common.errorGeneric'));
+      showAppAlert(t('common.errorGeneric'));
     } finally {
       setSaving(false);
     }

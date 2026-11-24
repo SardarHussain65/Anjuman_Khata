@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -9,11 +8,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatMonthShort, getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { MemberStatus, ProfileRow, TierRow } from '@/data/db/types';
 import { localInsert, localUpdate } from '@/data/sync/syncEngine';
@@ -46,6 +47,7 @@ function MemberFormModalInner({
 }: MemberFormModalProps) {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
@@ -84,17 +86,17 @@ function MemberFormModalInner({
     if (saving) return;
     const parsedNo = Number.parseInt(memberNo, 10);
     if (!fullName.trim() || !Number.isInteger(parsedNo) || parsedNo <= 0) {
-      Alert.alert(t('common.required'), `${t('members.memberNo')} & ${t('members.fullName')}`);
+      showAppAlert(t('common.required'), `${t('members.memberNo')} & ${t('members.fullName')}`);
       return;
     }
 
     if (showTierAssignment && !tierId) {
-      Alert.alert(t('common.required'), t('members.activateRequiresTier'));
+      showAppAlert(t('common.required'), t('members.activateRequiresTier'));
       return;
     }
 
     if (showTierAssignment && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom.trim())) {
-      Alert.alert(t('common.required'), `${t('members.effectiveFrom')} (YYYY-MM-DD)`);
+      showAppAlert(t('common.required'), `${t('members.effectiveFrom')} (YYYY-MM-DD)`);
       return;
     }
 
@@ -160,7 +162,7 @@ function MemberFormModalInner({
       }
       onClose();
     } catch (err) {
-      Alert.alert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
+      showAppAlert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
     } finally {
       setSaving(false);
     }
@@ -188,7 +190,10 @@ function MemberFormModalInner({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Serial # + Full Name */}
             <View style={styles.nameRow}>
               <View style={styles.noCol}>
@@ -281,29 +286,37 @@ function MemberFormModalInner({
                     ? t('members.activateRequiresTier')
                     : t('members.assignTier')}
                 </Text>
-                <View style={styles.row}>
-                  {tiers.map((tier) => {
-                    const selected = tierId === tier.id;
-                    return (
-                      <Pressable
-                        key={tier.id}
-                        onPress={() => setTierId(tier.id)}
-                        style={[
-                          styles.chip,
-                          {
-                            backgroundColor: selected ? colors.primary : colors.surface,
-                            borderColor: selected ? colors.primary : colors.primaryBorder,
-                            borderRadius: radius.md,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.chipText, { color: selected ? '#FFFFFF' : colors.text }]}>
-                          {lang === 'ur' && tier.name_ur ? tier.name_ur : tier.name} (Rs {tier.min_amount})
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                {tiers.length === 0 ? (
+                  <Text style={[styles.helper, { color: colors.warning }]}>
+                    {lang === 'ur'
+                      ? 'چندہ درجات لوڈ نہیں ہوئے۔ انٹرنیٹ سے منسلک ہو کر Sync کریں، یا فی الحال رضاکارانہ منتخب کریں۔'
+                      : 'No contribution tiers loaded yet. Connect to the internet and tap Sync, or choose Voluntary for now.'}
+                  </Text>
+                ) : (
+                  <View style={styles.row}>
+                    {tiers.map((tier) => {
+                      const selected = tierId === tier.id;
+                      return (
+                        <Pressable
+                          key={tier.id}
+                          onPress={() => setTierId(tier.id)}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: selected ? colors.primary : colors.surface,
+                              borderColor: selected ? colors.primary : colors.primaryBorder,
+                              borderRadius: radius.md,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.chipText, { color: selected ? '#FFFFFF' : colors.text }]}>
+                            {lang === 'ur' && tier.name_ur ? tier.name_ur : tier.name} (Rs {tier.min_amount})
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
                 {/* Month-only Effective From picker (Jan default, tap any month if started mid-year) */}
                 <View style={styles.group}>
                   <View style={styles.monthHeaderRow}>

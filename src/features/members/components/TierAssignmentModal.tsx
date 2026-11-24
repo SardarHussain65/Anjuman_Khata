@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -9,12 +8,14 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatDateShort, formatMonthShort, getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
 import { formatPKR } from '@/core/money';
 import { useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
 import { MemberTierRow, ProfileRow, TierRow } from '@/data/db/types';
@@ -44,6 +45,7 @@ function TierAssignmentModalInner({
 }: TierAssignmentModalProps & { member: ProfileRow }) {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
@@ -85,7 +87,7 @@ function TierAssignmentModalInner({
       );
       onClose();
     } catch {
-      Alert.alert(t('common.errorGeneric'));
+      showAppAlert(t('common.errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -109,7 +111,7 @@ function TierAssignmentModalInner({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body}>
+          <ScrollView contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}>
             <Text style={[styles.memberName, { color: colors.text }]}>{member.full_name}</Text>
 
             <View style={styles.tierRow}>

@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import { getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
 import { getCurrentLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
@@ -30,6 +30,7 @@ import {
   buildZakatReportHtml,
 } from '../templates/reportTemplates';
 import {
+  downloadPdfToDevice,
   exportAndShareCsv,
   generateAndSharePdf,
   loadOfflineUrduFontBase64,
@@ -88,10 +89,21 @@ export function AdminReportsScreen() {
     try {
       const fontB64 = reportLang === 'ur' ? await loadOfflineUrduFontBase64() : '';
       await fn(fontB64);
-    } catch {
-      Alert.alert(t('common.errorGeneric'));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : undefined;
+      showAppAlert(t('common.errorGeneric'), msg);
     } finally {
       setBusyKey(null);
+    }
+  };
+
+  const handleDownloadPdf = async (html: string, fileName: string) => {
+    const res = await downloadPdfToDevice(html, fileName);
+    if (res.saved) {
+      showAppAlert(
+        t('common.confirm'),
+        reportLang === 'ur' ? `فائل محفوظ ہو گئی: ${res.fileName}` : `Saved ${res.fileName}`,
+      );
     }
   };
 
@@ -171,7 +183,28 @@ export function AdminReportsScreen() {
         <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{t('reports.annualLedgerDesc')}</Text>
         <View style={styles.row}>
           <Button
-            label={t('reports.exportPdf')}
+            label={reportLang === 'ur' ? 'PDF محفوظ کریں' : 'Download PDF'}
+            loading={busyKey === 'ledger-dl'}
+            disabled={!activeFy}
+            onPress={() =>
+              activeFy &&
+              void runExport('ledger-dl', async (urduFontBase64) => {
+                const html = buildAnnualLedgerHtml({
+                  orgSettings: data?.orgSettings ?? null,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  fiscalYear: activeFy,
+                  summaries,
+                });
+                await handleDownloadPdf(html, `ledger-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+          <Button
+            label={reportLang === 'ur' ? 'شیئر PDF' : 'Share PDF'}
+            variant="secondary"
             loading={busyKey === 'ledger-pdf'}
             disabled={!activeFy}
             onPress={() =>
@@ -190,71 +223,119 @@ export function AdminReportsScreen() {
             }
             style={styles.flex1}
           />
-          <Button
-            label={t('reports.exportCsv')}
-            variant="secondary"
-            loading={busyKey === 'ledger-csv'}
-            disabled={!activeFy}
-            onPress={() =>
-              activeFy &&
-              void runExport('ledger-csv', async () => {
-                const csv = buildLedgerCsv(activeFy, summaries);
-                await exportAndShareCsv(csv, `ledger-${activeFy.label}.csv`);
-              })
-            }
-            style={styles.flex1}
-          />
         </View>
+        <Button
+          label={t('reports.exportCsv')}
+          variant="secondary"
+          loading={busyKey === 'ledger-csv'}
+          disabled={!activeFy}
+          onPress={() =>
+            activeFy &&
+            void runExport('ledger-csv', async () => {
+              const csv = buildLedgerCsv(activeFy, summaries);
+              await exportAndShareCsv(csv, `ledger-${activeFy.label}.csv`);
+            })
+          }
+        />
       </Card>
 
       {/* Report 2: Financial Summary */}
       <Card style={styles.card}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>{t('reports.financialSummary')}</Text>
         <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{t('reports.financialSummaryDesc')}</Text>
-        <Button
-          label={t('reports.exportPdf')}
-          loading={busyKey === 'summary-pdf'}
-          disabled={!activeFy}
-          onPress={() =>
-            activeFy &&
-            data &&
-            void runExport('summary-pdf', async (urduFontBase64) => {
-              let zakatDueTotal = 0;
-              let zakatPaidTotal = 0;
-              const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
-              if (data.zakatMembers.length > 0) {
-                for (const zm of data.zakatMembers) {
-                  const z = computeZakatMemberYearSummary({
-                    zakatMember: zm,
-                    year: zakatYear,
-                    perPersonAmount: zakatSetting?.per_person_amount ?? 0,
-                    payments: data.zakatPayments,
-                  });
-                  zakatDueTotal += z.dueAmount;
-                  zakatPaidTotal += z.paidAmount;
+        <View style={styles.row}>
+          <Button
+            label={reportLang === 'ur' ? 'PDF محفوظ کریں' : 'Download PDF'}
+            loading={busyKey === 'summary-dl'}
+            disabled={!activeFy}
+            onPress={() =>
+              activeFy &&
+              data &&
+              void runExport('summary-dl', async (urduFontBase64) => {
+                let zakatDueTotal = 0;
+                let zakatPaidTotal = 0;
+                const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
+                if (data.zakatMembers.length > 0) {
+                  for (const zm of data.zakatMembers) {
+                    const z = computeZakatMemberYearSummary({
+                      zakatMember: zm,
+                      year: zakatYear,
+                      perPersonAmount: zakatSetting?.per_person_amount ?? 0,
+                      payments: data.zakatPayments,
+                    });
+                    zakatDueTotal += z.dueAmount;
+                    zakatPaidTotal += z.paidAmount;
+                  }
+                } else {
+                  for (const m of data.profiles) {
+                    const z = computeMemberZakatYearSummary(m.id, zakatYear, data.zakatAssessments, data.zakatPayments);
+                    zakatDueTotal += z.dueAmount;
+                    zakatPaidTotal += z.paidAmount;
+                  }
                 }
-              } else {
-                for (const m of data.profiles) {
-                  const z = computeMemberZakatYearSummary(m.id, zakatYear, data.zakatAssessments, data.zakatPayments);
-                  zakatDueTotal += z.dueAmount;
-                  zakatPaidTotal += z.paidAmount;
+                const html = buildFinancialSummaryHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  fiscalYear: activeFy,
+                  summaries,
+                  zakatYear,
+                  zakatDueTotal,
+                  zakatPaidTotal,
+                });
+                await handleDownloadPdf(html, `summary-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+          <Button
+            label={reportLang === 'ur' ? 'شیئر PDF' : 'Share PDF'}
+            variant="secondary"
+            loading={busyKey === 'summary-pdf'}
+            disabled={!activeFy}
+            onPress={() =>
+              activeFy &&
+              data &&
+              void runExport('summary-pdf', async (urduFontBase64) => {
+                let zakatDueTotal = 0;
+                let zakatPaidTotal = 0;
+                const zakatSetting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
+                if (data.zakatMembers.length > 0) {
+                  for (const zm of data.zakatMembers) {
+                    const z = computeZakatMemberYearSummary({
+                      zakatMember: zm,
+                      year: zakatYear,
+                      perPersonAmount: zakatSetting?.per_person_amount ?? 0,
+                      payments: data.zakatPayments,
+                    });
+                    zakatDueTotal += z.dueAmount;
+                    zakatPaidTotal += z.paidAmount;
+                  }
+                } else {
+                  for (const m of data.profiles) {
+                    const z = computeMemberZakatYearSummary(m.id, zakatYear, data.zakatAssessments, data.zakatPayments);
+                    zakatDueTotal += z.dueAmount;
+                    zakatPaidTotal += z.paidAmount;
+                  }
                 }
-              }
-              const html = buildFinancialSummaryHtml({
-                orgSettings: data.orgSettings,
-                lang: reportLang,
-                pendingSyncCount: pendingCount,
-                urduFontBase64,
-                fiscalYear: activeFy,
-                summaries,
-                zakatYear,
-                zakatDueTotal,
-                zakatPaidTotal,
-              });
-              await generateAndSharePdf(html, `summary-${activeFy.label}.pdf`);
-            })
-          }
-        />
+                const html = buildFinancialSummaryHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  fiscalYear: activeFy,
+                  summaries,
+                  zakatYear,
+                  zakatDueTotal,
+                  zakatPaidTotal,
+                });
+                await generateAndSharePdf(html, `summary-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+        </View>
       </Card>
 
       {/* Report 3: Individual Member Statement */}
@@ -285,92 +366,180 @@ export function AdminReportsScreen() {
             );
           })}
         </ScrollView>
-        <Button
-          label={t('reports.exportPdf')}
-          loading={busyKey === 'statement-pdf'}
-          disabled={!activeFy || !activeMember}
-          onPress={() =>
-            activeFy &&
-            activeMember &&
-            data &&
-            void runExport('statement-pdf', async (urduFontBase64) => {
-              const html = buildMemberStatementHtml({
-                orgSettings: data.orgSettings,
-                lang: reportLang,
-                pendingSyncCount: pendingCount,
-                urduFontBase64,
-                member: activeMember,
-                fiscalYear: activeFy,
-                contributions: data.contributions,
-                memberTiers: data.memberTiers,
-                tiers: data.tiers,
-                tierRates: data.tierRates,
-                zakatAssessments: data.zakatAssessments,
-                zakatPayments: data.zakatPayments,
-                zakatYear,
-                currentMonthStart: currentMonth,
-              });
-              await generateAndSharePdf(html, `statement-${activeMember.member_no}-${activeFy.label}.pdf`);
-            })
-          }
-        />
+        <View style={styles.row}>
+          <Button
+            label={reportLang === 'ur' ? 'PDF محفوظ کریں' : 'Download PDF'}
+            loading={busyKey === 'statement-dl'}
+            disabled={!activeFy || !activeMember}
+            onPress={() =>
+              activeFy &&
+              activeMember &&
+              data &&
+              void runExport('statement-dl', async (urduFontBase64) => {
+                const html = buildMemberStatementHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  member: activeMember,
+                  fiscalYear: activeFy,
+                  contributions: data.contributions,
+                  memberTiers: data.memberTiers,
+                  tiers: data.tiers,
+                  tierRates: data.tierRates,
+                  zakatAssessments: data.zakatAssessments,
+                  zakatPayments: data.zakatPayments,
+                  zakatYear,
+                  currentMonthStart: currentMonth,
+                });
+                await handleDownloadPdf(html, `statement-${activeMember.member_no}-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+          <Button
+            label={reportLang === 'ur' ? 'شیئر PDF' : 'Share PDF'}
+            variant="secondary"
+            loading={busyKey === 'statement-pdf'}
+            disabled={!activeFy || !activeMember}
+            onPress={() =>
+              activeFy &&
+              activeMember &&
+              data &&
+              void runExport('statement-pdf', async (urduFontBase64) => {
+                const html = buildMemberStatementHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  member: activeMember,
+                  fiscalYear: activeFy,
+                  contributions: data.contributions,
+                  memberTiers: data.memberTiers,
+                  tiers: data.tiers,
+                  tierRates: data.tierRates,
+                  zakatAssessments: data.zakatAssessments,
+                  zakatPayments: data.zakatPayments,
+                  zakatYear,
+                  currentMonthStart: currentMonth,
+                });
+                await generateAndSharePdf(html, `statement-${activeMember.member_no}-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+        </View>
       </Card>
 
       {/* Report 4: Zakat Report (Gold-accented) */}
       <Card variant="zakat" style={styles.card}>
         <Text style={[styles.cardTitle, { color: colors.zakatText }]}>{t('reports.zakatReport')}</Text>
         <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{t('reports.zakatReportDesc')}</Text>
-        <Button
-          label={t('reports.exportPdf')}
-          variant="zakat"
-          loading={busyKey === 'zakat-pdf'}
-          disabled={!data}
-          onPress={() =>
-            data &&
-            void runExport('zakat-pdf', async (urduFontBase64) => {
-              const setting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
-              const html = buildZakatReportHtml({
-                orgSettings: data.orgSettings,
-                lang: reportLang,
-                pendingSyncCount: pendingCount,
-                urduFontBase64,
-                year: zakatYear,
-                setting,
-                profiles: data.profiles,
-                zakatMembers: data.zakatMembers,
-                assessments: data.zakatAssessments,
-                payments: data.zakatPayments,
-              });
-              await generateAndSharePdf(html, `zakat-${zakatYear}.pdf`);
-            })
-          }
-        />
+        <View style={styles.row}>
+          <Button
+            label={reportLang === 'ur' ? 'PDF محفوظ کریں' : 'Download PDF'}
+            variant="zakat"
+            loading={busyKey === 'zakat-dl'}
+            disabled={!data}
+            onPress={() =>
+              data &&
+              void runExport('zakat-dl', async (urduFontBase64) => {
+                const setting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
+                const html = buildZakatReportHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  year: zakatYear,
+                  setting,
+                  profiles: data.profiles,
+                  zakatMembers: data.zakatMembers,
+                  assessments: data.zakatAssessments,
+                  payments: data.zakatPayments,
+                });
+                await handleDownloadPdf(html, `zakat-${zakatYear}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+          <Button
+            label={reportLang === 'ur' ? 'شیئر PDF' : 'Share PDF'}
+            variant="secondary"
+            loading={busyKey === 'zakat-pdf'}
+            disabled={!data}
+            onPress={() =>
+              data &&
+              void runExport('zakat-pdf', async (urduFontBase64) => {
+                const setting = data.zakatSettings.find((s) => s.year === zakatYear) ?? null;
+                const html = buildZakatReportHtml({
+                  orgSettings: data.orgSettings,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  year: zakatYear,
+                  setting,
+                  profiles: data.profiles,
+                  zakatMembers: data.zakatMembers,
+                  assessments: data.zakatAssessments,
+                  payments: data.zakatPayments,
+                });
+                await generateAndSharePdf(html, `zakat-${zakatYear}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+        </View>
       </Card>
 
       {/* Report 5: Unpaid / Short Members List */}
       <Card style={styles.card}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>{t('reports.unpaidList')}</Text>
         <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{t('reports.unpaidListDesc')}</Text>
-        <Button
-          label={t('reports.exportPdf')}
-          loading={busyKey === 'unpaid-pdf'}
-          disabled={!activeFy}
-          onPress={() =>
-            activeFy &&
-            void runExport('unpaid-pdf', async (urduFontBase64) => {
-              const html = buildUnpaidShortListHtml({
-                orgSettings: data?.orgSettings ?? null,
-                lang: reportLang,
-                pendingSyncCount: pendingCount,
-                urduFontBase64,
-                fiscalYear: activeFy,
-                summaries,
-                currentMonthStart: currentMonth,
-              });
-              await generateAndSharePdf(html, `unpaid-${activeFy.label}.pdf`);
-            })
-          }
-        />
+        <View style={styles.row}>
+          <Button
+            label={reportLang === 'ur' ? 'PDF محفوظ کریں' : 'Download PDF'}
+            loading={busyKey === 'unpaid-dl'}
+            disabled={!activeFy}
+            onPress={() =>
+              activeFy &&
+              void runExport('unpaid-dl', async (urduFontBase64) => {
+                const html = buildUnpaidShortListHtml({
+                  orgSettings: data?.orgSettings ?? null,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  fiscalYear: activeFy,
+                  summaries,
+                  currentMonthStart: currentMonth,
+                });
+                await handleDownloadPdf(html, `unpaid-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+          <Button
+            label={reportLang === 'ur' ? 'شیئر PDF' : 'Share PDF'}
+            variant="secondary"
+            loading={busyKey === 'unpaid-pdf'}
+            disabled={!activeFy}
+            onPress={() =>
+              activeFy &&
+              void runExport('unpaid-pdf', async (urduFontBase64) => {
+                const html = buildUnpaidShortListHtml({
+                  orgSettings: data?.orgSettings ?? null,
+                  lang: reportLang,
+                  pendingSyncCount: pendingCount,
+                  urduFontBase64,
+                  fiscalYear: activeFy,
+                  summaries,
+                  currentMonthStart: currentMonth,
+                });
+                await generateAndSharePdf(html, `unpaid-${activeFy.label}.pdf`);
+              })
+            }
+            style={styles.flex1}
+          />
+        </View>
       </Card>
     </ScrollView>
   );

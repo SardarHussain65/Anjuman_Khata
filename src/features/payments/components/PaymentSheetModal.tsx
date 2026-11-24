@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -9,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR, parsePKR } from '@/core/money';
@@ -20,6 +20,7 @@ import {
 } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
+import { showAppAlert } from '@/core/ui/AppDialog';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
 import {
@@ -84,6 +85,7 @@ function PaymentSheetModalInner({
 }: PaymentSheetModalProps) {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
@@ -168,23 +170,23 @@ function PaymentSheetModalInner({
   const handleSave = async () => {
     if (saving) return;
     if (!memberId) {
-      Alert.alert(t('common.required'), t('members.title'));
+      showAppAlert(t('common.required'), t('members.title'));
       return;
     }
     if (!parsedAmount || parsedAmount <= 0) {
-      Alert.alert(t('common.required'), t('common.amount'));
+      showAppAlert(t('common.required'), t('common.amount'));
       return;
     }
     if (selectedMonths.length === 0) {
-      Alert.alert(t('common.required'), t('common.month'));
+      showAppAlert(t('common.required'), t('common.month'));
       return;
     }
     if (closedWarningYear) {
-      Alert.alert(t('history.closedNotice'), closedWarningYear.label);
+      showAppAlert(t('history.closedNotice'), closedWarningYear.label);
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn.trim())) {
-      Alert.alert(t('common.required'), `${t('common.date')} (YYYY-MM-DD)`);
+      showAppAlert(t('common.required'), `${t('common.date')} (YYYY-MM-DD)`);
       return;
     }
 
@@ -232,7 +234,7 @@ function PaymentSheetModalInner({
       }
       onClose();
     } catch {
-      Alert.alert(t('common.errorGeneric'));
+      showAppAlert(t('common.errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -241,7 +243,7 @@ function PaymentSheetModalInner({
   const handleVoid = async () => {
     if (!editingContribution) return;
     if (!voidReason.trim()) {
-      Alert.alert(t('common.required'), t('ledger.voidPrompt'));
+      showAppAlert(t('common.required'), t('ledger.voidPrompt'));
       return;
     }
     setSaving(true);
@@ -251,7 +253,7 @@ function PaymentSheetModalInner({
       });
       onClose();
     } catch {
-      Alert.alert(t('common.errorGeneric'));
+      showAppAlert(t('common.errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -293,7 +295,10 @@ function PaymentSheetModalInner({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Member Picker */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.text }]}>{t('members.title')}</Text>
