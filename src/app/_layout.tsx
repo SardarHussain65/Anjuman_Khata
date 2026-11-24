@@ -17,6 +17,10 @@ import { InitialSyncBanner, SyncDrawerModal } from '@/data/sync/SyncStatusUI';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+export const unstable_settings = {
+  anchor: '(user)',
+};
+
 const APP_LOGO = require('../../assets/images/logo.png');
 
 const queryClient = new QueryClient({
@@ -75,11 +79,11 @@ function RootNavigator() {
       <StatusBar style={!ready ? 'light' : isDark ? 'light' : 'dark'} />
       <InitialSyncBanner />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!isAdmin}>
+        <Stack.Protected guard={!isAdmin} redirectTo="/(admin)">
           <Stack.Screen name="(user)" />
           <Stack.Screen name="(auth)" options={{ presentation: 'modal' }} />
         </Stack.Protected>
-        <Stack.Protected guard={isAdmin}>
+        <Stack.Protected guard={isAdmin} redirectTo="/(user)">
           <Stack.Screen name="(admin)" />
         </Stack.Protected>
       </Stack>

@@ -6,6 +6,6 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(.pnpm|.*(?:(jest-)?react-native|@react-native|expo|@expo|react-navigation|@react-navigation|@shopify/flash-list|zustand)))',
+    'node_modules/(?!(.pnpm|.*(?:(jest-)?react-native|@react-native|expo|@expo|react-navigation|@react-navigation|standard-navigation|@shopify/flash-list|zustand)))',
   ],
 };
