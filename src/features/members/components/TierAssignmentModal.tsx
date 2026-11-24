@@ -11,9 +11,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
-import { formatDateShort, getKarachiToday } from '@/core/dates';
+import { formatDateShort, formatMonthShort, getKarachiCurrentMonthStart, getKarachiToday } from '@/core/dates';
 import { formatPKR } from '@/core/money';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
@@ -44,20 +44,33 @@ function TierAssignmentModalInner({
 }: TierAssignmentModalProps & { member: ProfileRow }) {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
 
-  const [selectedTierId, setSelectedTierId] = useState<string>(tiers[0]?.id ?? '');
-  const [effectiveFrom, setEffectiveFrom] = useState(getKarachiToday());
-  const [reason, setReason] = useState('');
-  const [saving, setSaving] = useState(false);
+  const today = getKarachiToday();
+  const currentYear = Number.parseInt(today.slice(0, 4), 10);
+  const currentMonthStart = getKarachiCurrentMonthStart();
+  const yearStart = `${currentYear}-01-01`;
 
   const history = useMemo(() => {
     return getMemberTierHistory(member.id, memberTiers, tiers);
   }, [member, memberTiers, tiers]);
 
+  const [selectedTierId, setSelectedTierId] = useState<string>(tiers[0]?.id ?? '');
+  const [startYear, setStartYear] = useState(currentYear);
+  const [effectiveFrom, setEffectiveFrom] = useState(
+    history.length === 0 ? yearStart : currentMonthStart,
+  );
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const monthOptions = Array.from({ length: 12 }, (_, idx) => {
+    const mm = String(idx + 1).padStart(2, '0');
+    return `${startYear}-${mm}-01`;
+  });
+
   const handleAssign = async () => {
-    if (!selectedTierId) return;
+    if (saving || !selectedTierId) return;
     setSaving(true);
     try {
       await localInsert(
@@ -126,13 +139,55 @@ function TierAssignmentModalInner({
               })}
             </View>
 
-            <TextField
-              label={t('members.effectiveFrom')}
-              value={effectiveFrom}
-              onChangeText={setEffectiveFrom}
-              placeholder="YYYY-MM-DD"
-              helperText="Non-retroactive: past months keep their historical tier."
-            />
+            <View style={styles.monthHeaderRow}>
+              <Text style={[styles.label, { color: colors.text }]}>{t('members.effectiveFrom')}</Text>
+              <View style={styles.yearStepper}>
+                <Pressable
+                  onPress={() => {
+                    const nextYr = startYear - 1;
+                    setStartYear(nextYr);
+                    setEffectiveFrom(`${nextYr}-${effectiveFrom.slice(5, 7)}-01`);
+                  }}
+                  style={[styles.yearBtn, { borderColor: colors.borderStrong, backgroundColor: colors.surface, borderRadius: radius.sm }]}
+                >
+                  <Ionicons name="chevron-back" size={14} color={colors.text} />
+                </Pressable>
+                <Text style={[styles.yearText, { color: colors.text }]}>{startYear}</Text>
+                <Pressable
+                  onPress={() => {
+                    const nextYr = startYear + 1;
+                    setStartYear(nextYr);
+                    setEffectiveFrom(`${nextYr}-${effectiveFrom.slice(5, 7)}-01`);
+                  }}
+                  style={[styles.yearBtn, { borderColor: colors.borderStrong, backgroundColor: colors.surface, borderRadius: radius.sm }]}
+                >
+                  <Ionicons name="chevron-forward" size={14} color={colors.text} />
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.monthGrid}>
+              {monthOptions.map((m) => {
+                const active = effectiveFrom.slice(0, 7) === m.slice(0, 7);
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => setEffectiveFrom(m)}
+                    style={[
+                      styles.monthChip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.surface,
+                        borderColor: active ? colors.primary : colors.borderStrong,
+                        borderRadius: radius.sm,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.monthChipText, { color: active ? '#FFFFFF' : colors.text }]}>
+                      {formatMonthShort(m, lang)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
             <TextField
               label={`${t('common.reason')} (${t('common.optional')})`}
@@ -201,6 +256,20 @@ const styles = StyleSheet.create({
   },
   tierChipText: { fontSize: 13, fontWeight: '700' },
   tierMin: { fontSize: 12, fontWeight: '600' },
+  label: { fontSize: 13, fontWeight: '600' },
+  monthHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  yearStepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  yearBtn: { width: 26, height: 26, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  yearText: { fontSize: 13, fontWeight: '700' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  monthChip: {
+    width: '23%',
+    minHeight: 36,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthChipText: { fontSize: 12, fontWeight: '600' },
   historyTitle: { fontSize: 15, fontWeight: '700', marginTop: 8 },
   histCard: { gap: 2 },
   histTier: { fontSize: 14, fontWeight: '700' },
