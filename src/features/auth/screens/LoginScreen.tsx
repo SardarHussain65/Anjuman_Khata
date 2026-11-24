@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/core/theme/ThemeProvider';
-import { switchLanguage } from '@/core/i18n';
+import { switchLanguage, useAppLanguage } from '@/core/i18n';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
 import { TextField } from '@/core/ui/TextField';
@@ -31,14 +31,14 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginScreen() {
   const { colors, radius } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
   const isSigningIn = useAuthStore((s) => s.isSigningIn);
   const authError = useAuthStore((s) => s.error);
   const devDetail = useAuthStore((s) => s.devDetail);
   const clearError = useAuthStore((s) => s.clearError);
-  const currentLang = i18n.language === 'ur' ? 'ur' : 'en';
+  const currentLang = useAppLanguage();
 
   const {
     control,

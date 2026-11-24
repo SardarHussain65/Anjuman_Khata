@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ThemePreference, useTheme, useThemePreferenceStore } from '@/core/theme/ThemeProvider';
-import { getCurrentLanguage, switchLanguage } from '@/core/i18n';
+import { switchLanguage, useAppLanguage } from '@/core/i18n';
 import { formatDateShort } from '@/core/dates';
 import { formatPKR } from '@/core/money';
 import { Card } from '@/core/ui/Card';
@@ -22,7 +22,7 @@ import { useSyncStatusStore } from '@/data/sync/statusStore';
 export function UserProfileScreen() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const authProfile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
   const isOfflineSession = useAuthStore((s) => s.isOfflineSession);

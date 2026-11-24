@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ThemePreference, useTheme, useThemePreferenceStore } from '@/core/theme/ThemeProvider';
-import { getCurrentLanguage, switchLanguage } from '@/core/i18n';
+import { switchLanguage, useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { useAuthStore } from '@/features/auth/store/authStore';
@@ -21,7 +21,7 @@ export default function AdminMoreRoute() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
   const themePref = useThemePreferenceStore((s) => s.preference);
@@ -37,31 +37,46 @@ export default function AdminMoreRoute() {
     {
       icon: 'archive-outline',
       title: t('history.title'),
-      subtitle: 'Multi-year archive, YoY totals, close/reopen fiscal years',
+      subtitle:
+        lang === 'ur'
+          ? 'پچھلے سالوں کا ریکارڈ اور مالی سال بند/دوبارہ کھولیں'
+          : 'Multi-year archive, YoY totals, close/reopen fiscal years',
       onPress: () => router.push('/(admin)/history-viewer'),
     },
     {
       icon: 'document-text-outline',
       title: t('reports.title'),
-      subtitle: 'Offline PDF reports (EN & Urdu RTL) and CSV export',
+      subtitle:
+        lang === 'ur'
+          ? 'آف لائن PDF رپورٹس (انگریزی اور اردو) اور CSV برآمد'
+          : 'Offline PDF reports (EN & Urdu RTL) and CSV export',
       onPress: () => router.push('/(admin)/reports'),
     },
     {
       icon: 'settings-outline',
       title: `${t('settings.collectionSummary')} & ${t('settings.tiers')}`,
-      subtitle: 'WhatsApp unpaid list, tier rates, organization settings',
+      subtitle:
+        lang === 'ur'
+          ? 'واٹس ایپ بقایا فہرست، چندہ درجات، اور تنظیم کی ترتیبات'
+          : 'WhatsApp unpaid list, tier rates, organization settings',
       onPress: () => router.push('/(admin)/org-settings'),
     },
     {
       icon: 'shield-checkmark-outline',
       title: t('settings.auditLog'),
-      subtitle: 'Tamper-evident record of edits, voids, and conflict losers',
+      subtitle:
+        lang === 'ur'
+          ? 'تمام ترامیم اور منسوخ اندراجات کا محفوظ ریکارڈ'
+          : 'Tamper-evident record of edits, voids, and conflict losers',
       onPress: () => router.push('/(admin)/audit-log'),
     },
     {
       icon: 'cloud-outline',
       title: t('sync.drawerTitle'),
-      subtitle: 'Pending offline queue, quarantine inspector, manual sync',
+      subtitle:
+        lang === 'ur'
+          ? 'آف لائن محفوظ اندراجات، تازہ اپ ڈیٹ اور کیش صفائی'
+          : 'Pending offline queue, quarantine inspector, manual sync',
       onPress: () => setSyncDrawerOpen(true),
     },
   ];

@@ -22,7 +22,7 @@ import {
   formatMonthYear,
   getKarachiToday,
 } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { TextField } from '@/core/ui/TextField';
@@ -38,7 +38,7 @@ import { useAuthStore } from '@/features/auth/store/authStore';
 export function AdminHistoryScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const adminId = useAuthStore((s) => s.profile?.id ?? null);
   const { data, isLoading } = useRegisterSnapshot();
 

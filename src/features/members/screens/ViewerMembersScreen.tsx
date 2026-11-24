@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
 import { formatMonthShort, getKarachiCurrentMonthStart } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { ComplianceBadge } from '@/core/ui/Badge';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
@@ -31,7 +31,7 @@ import { resolveEffectiveTierForMonth } from '@/core/rules/tiers';
 export function ViewerMembersScreen() {
   const { colors, radius, typography } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const { data, isLoading } = useRegisterSnapshot();
 
   const [search, setSearch] = useState('');

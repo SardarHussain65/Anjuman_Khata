@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
 import { getKarachiCurrentMonthStart } from '@/core/dates';
-import { getCurrentLanguage } from '@/core/i18n';
+import { useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { TextField } from '@/core/ui/TextField';
@@ -30,7 +30,7 @@ import { TierAssignmentModal } from '../components/TierAssignmentModal';
 export function AdminMembersScreen() {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
-  const lang = getCurrentLanguage();
+  const lang = useAppLanguage();
   const isOnline = useSyncStatusStore((s) => s.isOnline);
   const { data, isLoading } = useRegisterSnapshot();
 

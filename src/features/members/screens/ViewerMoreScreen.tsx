@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ThemePreference, useTheme, useThemePreferenceStore } from '@/core/theme/ThemeProvider';
-import { switchLanguage } from '@/core/i18n';
+import { switchLanguage, useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
@@ -21,9 +21,9 @@ import { useSyncStatusStore } from '@/data/sync/statusStore';
  */
 export function ViewerMoreScreen() {
   const { colors, radius } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const router = useRouter();
-  const lang = i18n.language === 'ur' ? 'ur' : 'en';
+  const lang = useAppLanguage();
   const themePref = useThemePreferenceStore((s) => s.preference);
   const setThemePref = useThemePreferenceStore((s) => s.setPreference);
   const setSyncDrawerOpen = useSyncStatusStore((s) => s.setDrawerOpen);
