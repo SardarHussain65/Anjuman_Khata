@@ -493,4 +493,65 @@ BEGIN
   RAISE NOTICE 'PASS TEST 5: Admin CRUD, non-blocking quarantine, field-level merge, loser audit, and soft-delete-wins';
 END $$;
 
+-- =============================================================================
+-- TEST 6: Separate Annual Zakat Members (`zakat_members`), Per-Person Rate & RLS
+-- =============================================================================
+DO $$
+DECLARE
+  v_zm_id uuid := '70000000-0000-0000-0000-000000000001'::uuid;
+  v_zp_id uuid := '70000000-0000-0000-0000-000000000002'::uuid;
+  v_push jsonb;
+  v_pull jsonb;
+BEGIN
+  -- Admin pushes a separate zakat_members family + payment (with member_id = NULL)
+  v_push := public.push_changes(jsonb_build_array(
+    jsonb_build_object(
+      'outbox_id', 'zm-insert-1',
+      'table', 'zakat_members',
+      'op', 'insert',
+      'record_id', v_zm_id,
+      'base_version', 0,
+      'changed_fields', jsonb_build_array('member_no', 'payer_name', 'khandan_name', 'is_family', 'family_count', 'status'),
+      'payload', jsonb_build_object(
+        'member_no', 1,
+        'payer_name', 'Haji Aslam',
+        'khandan_name', 'Sardar Khel',
+        'is_family', true,
+        'family_count', 6,
+        'status', 'active'
+      )
+    ),
+    jsonb_build_object(
+      'outbox_id', 'zp-insert-1',
+      'table', 'zakat_payments',
+      'op', 'insert',
+      'record_id', v_zp_id,
+      'base_version', 0,
+      'changed_fields', jsonb_build_array('member_id', 'zakat_member_id', 'family_count_snapshot', 'year', 'amount', 'paid_on', 'remark'),
+      'payload', jsonb_build_object(
+        'member_id', NULL,
+        'zakat_member_id', v_zm_id,
+        'family_count_snapshot', 6,
+        'year', 2026,
+        'amount', 1800,
+        'paid_on', '2026-03-27',
+        'remark', 'Cash'
+      )
+    )
+  ));
+
+  IF (v_push->'results'->0->>'status') <> 'accepted'
+     OR (v_push->'results'->1->>'status') <> 'accepted' THEN
+    RAISE EXCEPTION 'FAIL TEST 6a: zakat_members/payment push failed: %', v_push;
+  END IF;
+
+  -- Pull includes zakat_members
+  v_pull := public.pull_changes(NULL, ARRAY['zakat_members', 'zakat_payments']);
+  IF jsonb_array_length(v_pull->'changes'->'zakat_members') < 1 THEN
+    RAISE EXCEPTION 'FAIL TEST 6b: pull_changes did not return zakat_members';
+  END IF;
+
+  RAISE NOTICE 'PASS TEST 6: Separate zakat_members registration, nullable member_id zakat_payments, and sync RPCs';
+END $$;
+
 ROLLBACK;
