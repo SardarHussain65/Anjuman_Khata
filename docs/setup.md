@@ -30,7 +30,7 @@ cp .env.example .env
    ```bash
    supabase functions deploy admin-create-user
    ```
-4. Create your first Admin account in Supabase Dashboard → Authentication → Users, then insert their matching row in `public.profiles` with `role = 'admin'` and `member_no = 1`.
+4. Create your first Admin account in Supabase Dashboard → Authentication → Users, then insert their matching row in `public.profiles` with `role = 'admin'` (leave `member_no` as `NULL` — admin login accounts are not automatically added to the charity member register; if the admin also donates, add them as a regular member inside the app's Members tab).
 
 ### Option B: Local Supabase (Docker)
 ```bash

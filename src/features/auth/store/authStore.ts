@@ -7,7 +7,7 @@ import { UserRole } from '@/core/permissions';
 
 export interface AuthProfile {
   id: string;
-  member_no: number;
+  member_no: number | null;
   full_name: string;
   full_name_ur: string | null;
   phone: string | null;

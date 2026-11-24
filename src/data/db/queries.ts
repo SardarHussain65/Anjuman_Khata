@@ -44,12 +44,16 @@ export async function loadRegisterSnapshot(db: LocalDbAdapter): Promise<LocalReg
     zakatPaymentRows,
   ] = await Promise.all([
     db.getAll<Record<string, unknown>>(`SELECT * FROM org_settings WHERE deleted_at IS NULL LIMIT 1`),
-    db.getAll<Record<string, unknown>>(`SELECT * FROM profiles WHERE deleted_at IS NULL ORDER BY member_no ASC`),
+    db.getAll<Record<string, unknown>>(
+      `SELECT * FROM profiles WHERE deleted_at IS NULL AND role != 'admin' ORDER BY member_no ASC`,
+    ),
     db.getAll<Record<string, unknown>>(`SELECT * FROM tiers WHERE deleted_at IS NULL ORDER BY min_amount ASC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM tier_rates WHERE deleted_at IS NULL ORDER BY effective_from DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM member_tiers WHERE deleted_at IS NULL ORDER BY effective_from DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM fiscal_years WHERE deleted_at IS NULL ORDER BY start_date DESC`),
-    db.getAll<Record<string, unknown>>(`SELECT * FROM contributions ORDER BY paid_on DESC, created_at DESC`),
+    db.getAll<Record<string, unknown>>(
+      `SELECT * FROM contributions WHERE member_id NOT IN (SELECT id FROM profiles WHERE role = 'admin') ORDER BY paid_on DESC, created_at DESC`,
+    ),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_settings WHERE deleted_at IS NULL ORDER BY year DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_members WHERE deleted_at IS NULL ORDER BY member_no ASC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_assessments ORDER BY year DESC, created_at DESC`),

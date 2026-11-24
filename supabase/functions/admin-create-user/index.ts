@@ -140,12 +140,20 @@ Deno.serve(async (req: Request) => {
 
   // 3b. Atomic create Auth user + profile (+ optional initial tier)
   const fullName = body.full_name?.trim();
-  const memberNo = body.member_no;
   const status = body.status ?? 'active';
   const role = body.role ?? 'user';
+  const memberNo = role === 'admin' ? (body.member_no ?? null) : body.member_no;
 
-  if (!fullName || !Number.isInteger(memberNo) || (memberNo ?? 0) <= 0) {
-    return jsonResponse({ error: 'full_name and positive integer member_no are required' }, 400);
+  if (!fullName) {
+    return jsonResponse({ error: 'full_name is required' }, 400);
+  }
+
+  if (role !== 'admin' && (!Number.isInteger(memberNo) || (memberNo ?? 0) <= 0)) {
+    return jsonResponse({ error: 'positive integer member_no is required for members' }, 400);
+  }
+
+  if (memberNo != null && (!Number.isInteger(memberNo) || memberNo <= 0)) {
+    return jsonResponse({ error: 'member_no must be a positive integer when provided' }, 400);
   }
 
   if (!['active', 'non_earning', 'inactive'].includes(status)) {
@@ -160,7 +168,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'personal_pledge must be a positive integer PKR amount' }, 400);
   }
 
-  const email = body.email?.trim().toLowerCase() || `member${memberNo}@anjumankhata.app`;
+  const email =
+    body.email?.trim().toLowerCase() ||
+    (memberNo != null ? `member${memberNo}@anjumankhata.app` : `admin-${crypto.randomUUID().slice(0, 8)}@anjumankhata.app`);
   const password = body.password && body.password.length >= 6
     ? body.password
     : crypto.randomUUID().replace(/-/g, '').slice(0, 14);

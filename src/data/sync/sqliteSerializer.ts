@@ -2,6 +2,30 @@ import { BindParam, LocalDbAdapter } from '../db/database';
 import { SyncTableName } from '../db/types';
 import { getEntityConfig } from './registry';
 
+const NOT_NULL_DEFAULTS: Partial<Record<SyncTableName, Record<string, BindParam>>> = {
+  profiles: {
+    member_no: 0,
+    full_name: 'Member',
+    status: 'active',
+    role: 'user',
+    joined_on: '2026-01-01',
+  },
+  zakat_members: {
+    member_no: 0,
+    payer_name: 'Member',
+    khandan_name: '',
+    is_family: 0,
+    family_count: 1,
+    status: 'active',
+  },
+  zakat_settings: {
+    nisab_amount: 0,
+    rate_bps: 250,
+    basis_note: '',
+    per_person_amount: 0,
+  },
+};
+
 /** Converts a Postgres JSON row into SQLite bind parameters ordered by registry columns. */
 export function serializeRowForSqlite(
   table: SyncTableName,
@@ -10,10 +34,14 @@ export function serializeRowForSqlite(
   const cfg = getEntityConfig(table);
   const jsonCols = new Set(cfg.jsonColumns ?? []);
   const boolCols = new Set(cfg.booleanColumns ?? []);
+  const defaults = NOT_NULL_DEFAULTS[table];
 
   return cfg.columns.map((col) => {
     const val = row[col];
     if (val === undefined || val === null) {
+      if (defaults && col in defaults) {
+        return defaults[col];
+      }
       return null;
     }
     if (jsonCols.has(col)) {

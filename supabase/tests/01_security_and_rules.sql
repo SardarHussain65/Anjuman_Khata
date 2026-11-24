@@ -39,9 +39,9 @@ BEGIN
     ('40000000-0000-0000-0000-000000002026'::uuid, 2026, 180000, 250, 'Silver basis test')
   ON CONFLICT (year) DO NOTHING;
 
-  -- Profiles: 1 admin, 2 standard users
+  -- Profiles: 1 admin (NULL member_no — not a register member), 2 standard users
   INSERT INTO public.profiles (id, member_no, full_name, status, role) VALUES
-    (v_admin_id, 9001, 'Admin One', 'active', 'admin'),
+    (v_admin_id, NULL, 'Admin One', 'active', 'admin'),
     (v_user1_id, 9002, 'Member One', 'active', 'user'),
     (v_user2_id, 9003, 'Member Two', 'non_earning', 'user');
 
@@ -552,6 +552,42 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'PASS TEST 6: Separate zakat_members registration, nullable member_id zakat_payments, and sync RPCs';
+END $$;
+
+-- =============================================================================
+-- TEST 7: Admin accounts are excluded from charity register compliance & free up member_no #1
+-- =============================================================================
+DO $$
+DECLARE
+  v_admin_id uuid := 'aaaaaaaa-0000-0000-0000-000000000001'::uuid;
+  v_admin_compliance_count int;
+  v_caught boolean := false;
+BEGIN
+  -- Admin must NOT appear in get_fiscal_year_compliance()
+  SELECT count(*) INTO v_admin_compliance_count
+  FROM public.get_fiscal_year_compliance('30000000-0000-0000-0000-000000002026'::uuid)
+  WHERE member_id = v_admin_id;
+
+  IF v_admin_compliance_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL TEST 7a: admin account appeared in get_fiscal_year_compliance (% rows)', v_admin_compliance_count;
+  END IF;
+
+  -- A regular member can cleanly take member_no = 1 (admin does not occupy it)
+  INSERT INTO public.profiles (id, member_no, full_name, status, role)
+  VALUES ('bbbbbbbb-0000-0000-0000-000000000099'::uuid, 1, 'Aslam Member', 'active', 'user');
+
+  -- A regular member with NULL member_no must be rejected by CHECK constraint
+  BEGIN
+    INSERT INTO public.profiles (id, member_no, full_name, status, role)
+    VALUES ('bbbbbbbb-0000-0000-0000-000000000098'::uuid, NULL, 'Missing Serial', 'active', 'user');
+  EXCEPTION WHEN check_violation THEN
+    v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL TEST 7b: non-admin member with NULL member_no was not rejected';
+  END IF;
+
+  RAISE NOTICE 'PASS TEST 7: Admin login excluded from member register and member_no #1 remains free';
 END $$;
 
 ROLLBACK;

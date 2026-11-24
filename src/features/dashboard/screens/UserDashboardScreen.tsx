@@ -49,6 +49,7 @@ export function UserDashboardScreen() {
       (authProfile
         ? {
             ...authProfile,
+            member_no: authProfile.member_no ?? 0,
             notes: null,
             created_at: '',
             updated_at: '',

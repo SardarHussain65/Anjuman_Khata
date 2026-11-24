@@ -71,6 +71,45 @@ async function ensureLocalSchemaUpgraded(adapter: LocalDbAdapter): Promise<void>
   }
 
   await adapter.exec(`CREATE INDEX IF NOT EXISTS idx_local_zpay_zmem_year ON zakat_payments (zakat_member_id, year);`);
+
+  // Safe idempotent v2 -> v3 upgrade for existing devices (allows NULL member_no on admin login rows)
+  const profileCols = await adapter.getAll<{ name: string; notnull: number }>(`PRAGMA table_info(profiles)`);
+  const profileMemberNoNotNull = profileCols.find((c) => c.name === 'member_no')?.notnull === 1;
+  if (profileMemberNoNotNull) {
+    await adapter.withTransaction(async () => {
+      await adapter.exec(`DROP TABLE IF EXISTS profiles_v3;`);
+      await adapter.exec(`CREATE TABLE profiles_v3 (
+        id TEXT PRIMARY KEY NOT NULL,
+        member_no INTEGER,
+        full_name TEXT NOT NULL,
+        full_name_ur TEXT,
+        phone TEXT,
+        designation TEXT,
+        tag TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        role TEXT NOT NULL DEFAULT 'user',
+        personal_pledge INTEGER,
+        joined_on TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        updated_by TEXT,
+        version INTEGER NOT NULL DEFAULT 1
+      );`);
+      await adapter.exec(`INSERT OR IGNORE INTO profiles_v3 (
+        id, member_no, full_name, full_name_ur, phone, designation, tag, status, role,
+        personal_pledge, joined_on, notes, created_at, updated_at, deleted_at, updated_by, version
+      ) SELECT
+        id, member_no, full_name, full_name_ur, phone, designation, tag, status, role,
+        personal_pledge, joined_on, notes, created_at, updated_at, deleted_at, updated_by, version
+      FROM profiles;`);
+      await adapter.exec(`DROP TABLE profiles;`);
+      await adapter.exec(`ALTER TABLE profiles_v3 RENAME TO profiles;`);
+      await adapter.exec(`CREATE INDEX IF NOT EXISTS idx_local_profiles_updated ON profiles (updated_at);`);
+    });
+  }
+
   await adapter.run(
     `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('schema_version', ?)`,
     [String(LOCAL_SCHEMA_VERSION)],

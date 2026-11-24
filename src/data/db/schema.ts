@@ -3,7 +3,7 @@
  * Uses WAL journal mode and indexes matching Section 4 of the specification.
  */
 
-export const LOCAL_SCHEMA_VERSION = 2;
+export const LOCAL_SCHEMA_VERSION = 3;
 
 export const LOCAL_SCHEMA_SQL: string[] = [
   `PRAGMA journal_mode = WAL;`,
@@ -27,7 +27,7 @@ export const LOCAL_SCHEMA_SQL: string[] = [
 
   `CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY NOT NULL,
-    member_no INTEGER NOT NULL,
+    member_no INTEGER,
     full_name TEXT NOT NULL,
     full_name_ur TEXT,
     phone TEXT,
