@@ -66,7 +66,7 @@ export async function exportPendingQueueFile(): Promise<string> {
 
   const fileName = `anjuman-khata-queue-${Date.now()}.json`;
   const file = new File(Paths.cache, fileName);
-  file.write(JSON.stringify(snapshot, null, 2));
+  await file.write(JSON.stringify(snapshot, null, 2));
 
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(file.uri, {
