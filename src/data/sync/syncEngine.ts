@@ -7,10 +7,12 @@ import { upsertServerRow } from './sqliteSerializer';
 import { pushPendingOutbox } from './push';
 import { getLastPulledAt, pullChangesIntoLocalDb } from './pull';
 import { useSyncStatusStore } from './statusStore';
+import { useAuthStore } from '@/features/auth/store/authStore';
 
 const BACKOFF_MS = [2_000, 5_000, 15_000, 60_000] as const;
 
 let activeSyncPromise: Promise<void> | null = null;
+let followUpSyncNeeded = false;
 let failureStreak = 0;
 let backoffTimer: ReturnType<typeof setTimeout> | null = null;
 let writeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -249,12 +251,14 @@ export async function localSoftDelete(
   if (!options?.skipAutoSync) scheduleDebouncedSync();
 }
 
-/** Runs a full push -> pull cycle with single-flight locking & exponential backoff on error. */
+/** Runs a full push -> pull cycle with single-flight locking, follow-up coalescing & exponential backoff. */
 export async function runSync(options?: {
   db?: LocalDbAdapter;
   forceOfflineCheck?: boolean;
+  allowPush?: boolean;
 }): Promise<void> {
   if (activeSyncPromise) {
+    followUpSyncNeeded = true;
     return activeSyncPromise;
   }
 
@@ -272,9 +276,19 @@ export async function runSync(options?: {
       }
     }
 
+    // In passwordless read-only viewer mode (`anon`), skip pushing stale admin outbox items so pull never fails
+    const authState = useAuthStore.getState();
+    const isAdminSession = Boolean(authState.session && authState.profile?.role === 'admin');
+    const shouldPush =
+      options?.allowPush !== undefined
+        ? options.allowPush
+        : options?.db !== undefined || isAdminSession;
+
     store.setSyncing();
     try {
-      await pushPendingOutbox(db);
+      if (shouldPush) {
+        await pushPendingOutbox(db);
+      }
       const pullRes = await pullChangesIntoLocalDb(db);
       await refreshQueueCounts(db);
       resetSyncBackoff();
@@ -295,6 +309,10 @@ export async function runSync(options?: {
       }, delay);
     } finally {
       activeSyncPromise = null;
+      if (followUpSyncNeeded) {
+        followUpSyncNeeded = false;
+        runSync(options).catch(() => {});
+      }
     }
   })();
 

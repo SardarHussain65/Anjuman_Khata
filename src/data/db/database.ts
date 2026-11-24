@@ -17,6 +17,66 @@ const DB_NAME = 'anjuman_khata_v1.db';
 
 let activeAdapter: LocalDbAdapter | null = null;
 let initPromise: Promise<LocalDbAdapter> | null = null;
+let upgradedSchemaVersion = 0;
+
+async function ensureLocalSchemaUpgraded(adapter: LocalDbAdapter): Promise<void> {
+  if (upgradedSchemaVersion >= LOCAL_SCHEMA_VERSION) return;
+
+  for (const stmt of LOCAL_SCHEMA_SQL) {
+    await adapter.exec(stmt);
+  }
+
+  // Safe idempotent v1 -> v2 upgrade for existing devices (adds per_person_amount & separate zakat_members support)
+  const zSetCols = await adapter.getAll<{ name: string }>(`PRAGMA table_info(zakat_settings)`);
+  if (!zSetCols.some((c) => c.name === 'per_person_amount')) {
+    await adapter.exec(`ALTER TABLE zakat_settings ADD COLUMN per_person_amount INTEGER NOT NULL DEFAULT 0;`);
+  }
+
+  const zPayCols = await adapter.getAll<{ name: string; notnull: number }>(`PRAGMA table_info(zakat_payments)`);
+  const memberIdNotNull = zPayCols.find((c) => c.name === 'member_id')?.notnull === 1;
+  const hasZakatMemberId = zPayCols.some((c) => c.name === 'zakat_member_id');
+  if (memberIdNotNull || !hasZakatMemberId) {
+    await adapter.withTransaction(async () => {
+      await adapter.exec(`DROP TABLE IF EXISTS zakat_payments_v2;`);
+      await adapter.exec(`CREATE TABLE zakat_payments_v2 (
+        id TEXT PRIMARY KEY NOT NULL,
+        member_id TEXT,
+        zakat_member_id TEXT,
+        family_count_snapshot INTEGER,
+        assessment_id TEXT,
+        year INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        paid_on TEXT NOT NULL,
+        collected_by TEXT,
+        remark TEXT,
+        void_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        updated_by TEXT,
+        version INTEGER NOT NULL DEFAULT 1
+      );`);
+      await adapter.exec(`INSERT OR IGNORE INTO zakat_payments_v2 (
+        id, member_id, assessment_id, year, amount, paid_on, collected_by,
+        remark, void_reason, created_at, updated_at, deleted_at, updated_by, version
+      ) SELECT
+        id, member_id, assessment_id, year, amount, paid_on, collected_by,
+        remark, void_reason, created_at, updated_at, deleted_at, updated_by, version
+      FROM zakat_payments;`);
+      await adapter.exec(`DROP TABLE zakat_payments;`);
+      await adapter.exec(`ALTER TABLE zakat_payments_v2 RENAME TO zakat_payments;`);
+      await adapter.exec(`CREATE INDEX IF NOT EXISTS idx_local_zpay_updated ON zakat_payments (updated_at);`);
+      await adapter.exec(`CREATE INDEX IF NOT EXISTS idx_local_zpay_member_year ON zakat_payments (member_id, year);`);
+    });
+  }
+
+  await adapter.exec(`CREATE INDEX IF NOT EXISTS idx_local_zpay_zmem_year ON zakat_payments (zakat_member_id, year);`);
+  await adapter.run(
+    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('schema_version', ?)`,
+    [String(LOCAL_SCHEMA_VERSION)],
+  );
+  upgradedSchemaVersion = LOCAL_SCHEMA_VERSION;
+}
 
 type TableListener = () => void;
 const listenersByTable = new Map<string, Set<TableListener>>();
@@ -86,24 +146,29 @@ class ExpoSqliteAdapter implements LocalDbAdapter {
 export function setLocalDbAdapterForTests(adapter: LocalDbAdapter | null): void {
   activeAdapter = adapter;
   initPromise = adapter ? Promise.resolve(adapter) : null;
+  upgradedSchemaVersion = adapter ? LOCAL_SCHEMA_VERSION : 0;
 }
 
 export async function getLocalDb(): Promise<LocalDbAdapter> {
-  if (activeAdapter) return activeAdapter;
+  if (activeAdapter) {
+    if (upgradedSchemaVersion < LOCAL_SCHEMA_VERSION) {
+      await ensureLocalSchemaUpgraded(activeAdapter);
+    }
+    return activeAdapter;
+  }
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const rawDb = await SQLite.openDatabaseAsync(DB_NAME);
-    const adapter = new ExpoSqliteAdapter(rawDb);
-    for (const stmt of LOCAL_SCHEMA_SQL) {
-      await adapter.exec(stmt);
+    try {
+      const rawDb = await SQLite.openDatabaseAsync(DB_NAME);
+      const adapter = new ExpoSqliteAdapter(rawDb);
+      await ensureLocalSchemaUpgraded(adapter);
+      activeAdapter = adapter;
+      return adapter;
+    } catch (err) {
+      initPromise = null;
+      throw err;
     }
-    await adapter.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('schema_version', ?)`,
-      [String(LOCAL_SCHEMA_VERSION)],
-    );
-    activeAdapter = adapter;
-    return adapter;
   })();
 
   return initPromise;
@@ -121,6 +186,7 @@ export async function resetLocalDatabase(): Promise<void> {
     'fiscal_years',
     'contributions',
     'zakat_settings',
+    'zakat_members',
     'zakat_assessments',
     'zakat_payments',
     'sync_state',
@@ -142,6 +208,7 @@ export async function resetLocalDatabase(): Promise<void> {
     'fiscal_years',
     'contributions',
     'zakat_settings',
+    'zakat_members',
     'zakat_assessments',
     'zakat_payments',
     'sync_outbox',
@@ -168,6 +235,15 @@ export function useLocalQuery<T>(
     queryRef.current = queryFn;
   });
 
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const tableKey = tables.join(',');
   const depsKey = JSON.stringify(deps);
 
@@ -175,26 +251,44 @@ export function useLocalQuery<T>(
     try {
       const db = await getLocalDb();
       const result = await queryRef.current(db);
+      if (!mountedRef.current) return;
       setData(result);
       setError(null);
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e : new Error('Local query failed'));
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     let active = true;
+    let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
     const watched = tableKey.split(',') as (SyncTableName | 'sync_outbox' | 'sync_quarantine' | 'sync_state')[];
-    const execute = () => {
+
+    const runNow = () => {
       if (!active) return;
       void runQuery();
     };
-    execute();
-    const unsub = subscribeToTables(watched, execute);
+
+    // Coalesce burst table notifications (e.g. multi-month inserts / sync batches) into a single local read
+    const scheduleRefresh = () => {
+      if (!active) return;
+      if (coalesceTimer) clearTimeout(coalesceTimer);
+      coalesceTimer = setTimeout(() => {
+        coalesceTimer = null;
+        runNow();
+      }, 30);
+    };
+
+    runNow();
+    const unsub = subscribeToTables(watched, scheduleRefresh);
     return () => {
       active = false;
+      if (coalesceTimer) clearTimeout(coalesceTimer);
       unsub();
     };
   }, [runQuery, tableKey, depsKey]);

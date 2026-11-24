@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { Button } from '@/core/ui/Button';
 import { Card } from '@/core/ui/Card';
+import { resetLocalDatabase } from '../db/database';
 import { QuarantineRow } from '../db/types';
 import { useSyncStatusStore } from './statusStore';
 import { refreshQueueCounts, resetSyncBackoff, runSync } from './syncEngine';
@@ -165,6 +167,28 @@ export function SyncDrawerModal() {
     await exportPendingQueueFile();
   };
 
+  const handleFreshResync = () => {
+    Alert.alert(t('sync.resetCache'), t('sync.resetCacheConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.confirm'),
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await resetLocalDatabase();
+            await refreshQueueCounts();
+            resetSyncBackoff();
+            await runSync();
+            await loadQuarantine();
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <Modal
       visible={open}
@@ -214,7 +238,7 @@ export function SyncDrawerModal() {
               </View>
               {lastError ? (
                 <Text style={[styles.errorLine, { color: colors.danger }]}>
-                  {t('common.errorGeneric')}
+                  {lastError}
                 </Text>
               ) : null}
 
@@ -232,6 +256,13 @@ export function SyncDrawerModal() {
                   style={styles.flexBtn}
                 />
               </View>
+              <Button
+                label={t('sync.resetCache')}
+                variant="danger"
+                loading={busy}
+                onPress={handleFreshResync}
+                style={styles.resetBtn}
+              />
             </Card>
 
             <Text style={[styles.sectionHeader, { color: colors.text }]}>
@@ -253,6 +284,11 @@ export function SyncDrawerModal() {
                   <Text style={[styles.qReason, { color: colors.text }]}>
                     {t(mapQuarantineErrorKey(item.error_code))}
                   </Text>
+                  {item.error_message ? (
+                    <Text style={[styles.qDetail, { color: colors.textSecondary }]} numberOfLines={3}>
+                      {item.error_message}
+                    </Text>
+                  ) : null}
                   <Button
                     label={t('sync.dismiss')}
                     variant="secondary"
@@ -334,8 +370,10 @@ const styles = StyleSheet.create({
   errorLine: { fontSize: 12, marginTop: 4 },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   flexBtn: { flex: 1 },
+  resetBtn: { marginTop: 10 },
   sectionHeader: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   qTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  qReason: { fontSize: 13, marginBottom: 10 },
+  qReason: { fontSize: 13, marginBottom: 6 },
+  qDetail: { fontSize: 11, marginBottom: 10 },
   dismissBtn: { minHeight: 40 },
 });

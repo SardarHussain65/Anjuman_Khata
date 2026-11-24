@@ -20,10 +20,12 @@ export interface PushMutationResult {
   outbox_id: string;
   table: SyncTableName;
   record_id: string;
-  status: 'accepted' | 'conflict_merged' | 'conflict_server_wins' | 'rejected';
+  status: 'accepted' | 'conflict_merged' | 'merged' | 'conflict_server_wins' | 'rejected';
   record?: Record<string, unknown>;
   code?: string;
   message?: string;
+  error_code?: string;
+  error_message?: string;
 }
 
 export interface PushChangesResponse {

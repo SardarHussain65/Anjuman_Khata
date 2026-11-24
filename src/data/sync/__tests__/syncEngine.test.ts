@@ -128,11 +128,12 @@ class InMemorySyncDb implements LocalDbAdapter {
 }
 
 describe('Sync Registry & Conflict Resolution', () => {
-  it('registers all 10 synced tables in valid parent-first push order', () => {
-    expect(ALL_SYNC_TABLES).toHaveLength(10);
+  it('registers all 11 synced tables in valid parent-first push order', () => {
+    expect(ALL_SYNC_TABLES).toHaveLength(11);
     const byName = Object.fromEntries(SYNC_REGISTRY.map((e) => [e.table, e.pushOrder]));
     expect(byName.tiers).toBeLessThan(byName.tier_rates);
     expect(byName.profiles).toBeLessThan(byName.contributions);
+    expect(byName.zakat_members).toBeLessThan(byName.zakat_payments);
     expect(byName.profiles).toBeLessThan(byName.member_tiers);
     expect(byName.zakat_assessments).toBeLessThan(byName.zakat_payments);
   });

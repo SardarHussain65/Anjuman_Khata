@@ -8,6 +8,7 @@ import {
   TierRateRow,
   TierRow,
   ZakatAssessmentRow,
+  ZakatMemberRow,
   ZakatPaymentRow,
   ZakatSettingRow,
 } from './types';
@@ -23,6 +24,7 @@ export interface LocalRegisterSnapshot {
   fiscalYears: FiscalYearRow[];
   contributions: ContributionRow[];
   zakatSettings: ZakatSettingRow[];
+  zakatMembers: ZakatMemberRow[];
   zakatAssessments: ZakatAssessmentRow[];
   zakatPayments: ZakatPaymentRow[];
 }
@@ -37,6 +39,7 @@ export async function loadRegisterSnapshot(db: LocalDbAdapter): Promise<LocalReg
     fiscalYearRows,
     contributionRows,
     zakatSettingRows,
+    zakatMemberRows,
     zakatAssessmentRows,
     zakatPaymentRows,
   ] = await Promise.all([
@@ -48,6 +51,7 @@ export async function loadRegisterSnapshot(db: LocalDbAdapter): Promise<LocalReg
     db.getAll<Record<string, unknown>>(`SELECT * FROM fiscal_years WHERE deleted_at IS NULL ORDER BY start_date DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM contributions ORDER BY paid_on DESC, created_at DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_settings WHERE deleted_at IS NULL ORDER BY year DESC`),
+    db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_members WHERE deleted_at IS NULL ORDER BY member_no ASC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_assessments ORDER BY year DESC, created_at DESC`),
     db.getAll<Record<string, unknown>>(`SELECT * FROM zakat_payments ORDER BY paid_on DESC, created_at DESC`),
   ]);
@@ -61,6 +65,7 @@ export async function loadRegisterSnapshot(db: LocalDbAdapter): Promise<LocalReg
     fiscalYears: fiscalYearRows.map((r) => deserializeRowFromSqlite<FiscalYearRow>('fiscal_years', r)),
     contributions: contributionRows.map((r) => deserializeRowFromSqlite<ContributionRow>('contributions', r)),
     zakatSettings: zakatSettingRows.map((r) => deserializeRowFromSqlite<ZakatSettingRow>('zakat_settings', r)),
+    zakatMembers: zakatMemberRows.map((r) => deserializeRowFromSqlite<ZakatMemberRow>('zakat_members', r)),
     zakatAssessments: zakatAssessmentRows.map((r) => deserializeRowFromSqlite<ZakatAssessmentRow>('zakat_assessments', r)),
     zakatPayments: zakatPaymentRows.map((r) => deserializeRowFromSqlite<ZakatPaymentRow>('zakat_payments', r)),
   };

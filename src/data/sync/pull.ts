@@ -35,7 +35,10 @@ export async function pullChangesIntoLocalDb(
 ): Promise<{ serverTime: string; pulledCount: number }> {
   const transport = getSyncTransport();
   const tables = options?.tables ?? ALL_SYNC_TABLES;
-  const lastPulledAt = options?.forceFull ? null : await getLastPulledAt(db);
+  const tierCountRow = await db.getFirst<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM tiers`);
+  const needsFullSeedPull = !options?.tables && (tierCountRow?.cnt ?? 0) === 0;
+  const lastPulledAt =
+    options?.forceFull || needsFullSeedPull ? null : await getLastPulledAt(db);
 
   // If full pull with progress callback, pull in small table batches so UI shows progress
   if (options?.onTableProgress) {
@@ -45,7 +48,18 @@ export async function pullChangesIntoLocalDb(
 
     for (let i = 0; i < tables.length; i += 1) {
       const tbl = tables[i];
-      const res = await transport.pullChanges(lastPulledAt, [tbl]);
+      let res;
+      try {
+        res = await transport.pullChanges(lastPulledAt, [tbl]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        // Allow older backend schemas to sync all other tables while a new migration is pending
+        if (msg.includes('INVALID_TABLE')) {
+          options.onTableProgress(i + 1, tables.length);
+          continue;
+        }
+        throw err;
+      }
       latestServerTime = res.server_time;
       const rows = res.changes?.[tbl] ?? [];
       if (rows.length > 0) {
@@ -67,8 +81,8 @@ export async function pullChangesIntoLocalDb(
     return { serverTime: latestServerTime, pulledCount: totalPulled };
   }
 
-  // Standard incremental pull (single RPC round-trip for all registered tables)
-  const response = await transport.pullChanges(lastPulledAt, tables);
+  // Standard incremental pull (pass undefined when pulling all tables so server returns every table it supports)
+  const response = await transport.pullChanges(lastPulledAt, options?.tables);
 
   // Protect any record currently waiting in sync_outbox from being overwritten before push
   const pendingRows = await db.getAll<{ table_name: SyncTableName; record_id: string }>(

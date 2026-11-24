@@ -89,7 +89,14 @@ export const SYNC_REGISTRY: readonly SyncEntityConfig[] = [
     pushOrder: 5,
     userScope: 'shared',
     conflictPolicy: 'server_wins',
-    columns: [...SYNC_COMMON_COLS, 'year', 'nisab_amount', 'rate_bps', 'basis_note'],
+    columns: [
+      ...SYNC_COMMON_COLS,
+      'year',
+      'nisab_amount',
+      'rate_bps',
+      'basis_note',
+      'per_person_amount',
+    ],
   },
   {
     table: 'profiles',
@@ -137,8 +144,25 @@ export const SYNC_REGISTRY: readonly SyncEntityConfig[] = [
     ],
   },
   {
-    table: 'zakat_assessments',
+    table: 'zakat_members',
     pushOrder: 9,
+    userScope: 'shared',
+    conflictPolicy: 'mutable_field_merge',
+    columns: [
+      ...SYNC_COMMON_COLS,
+      'member_no',
+      'payer_name',
+      'khandan_name',
+      'is_family',
+      'family_count',
+      'status',
+      'notes',
+    ],
+    booleanColumns: ['is_family'],
+  },
+  {
+    table: 'zakat_assessments',
+    pushOrder: 10,
     userScope: 'own',
     conflictPolicy: 'mutable_field_merge',
     columns: [
@@ -158,12 +182,14 @@ export const SYNC_REGISTRY: readonly SyncEntityConfig[] = [
   },
   {
     table: 'zakat_payments',
-    pushOrder: 10,
+    pushOrder: 11,
     userScope: 'own',
     conflictPolicy: 'ledger_field_merge',
     columns: [
       ...SYNC_COMMON_COLS,
       'member_id',
+      'zakat_member_id',
+      'family_count_snapshot',
       'assessment_id',
       'year',
       'amount',

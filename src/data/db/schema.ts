@@ -3,7 +3,7 @@
  * Uses WAL journal mode and indexes matching Section 4 of the specification.
  */
 
-export const LOCAL_SCHEMA_VERSION = 1;
+export const LOCAL_SCHEMA_VERSION = 2;
 
 export const LOCAL_SCHEMA_SQL: string[] = [
   `PRAGMA journal_mode = WAL;`,
@@ -121,9 +121,26 @@ export const LOCAL_SCHEMA_SQL: string[] = [
   `CREATE TABLE IF NOT EXISTS zakat_settings (
     id TEXT PRIMARY KEY NOT NULL,
     year INTEGER NOT NULL,
-    nisab_amount INTEGER NOT NULL,
+    nisab_amount INTEGER NOT NULL DEFAULT 0,
     rate_bps INTEGER NOT NULL DEFAULT 250,
     basis_note TEXT NOT NULL DEFAULT '',
+    per_person_amount INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT,
+    updated_by TEXT,
+    version INTEGER NOT NULL DEFAULT 1
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS zakat_members (
+    id TEXT PRIMARY KEY NOT NULL,
+    member_no INTEGER NOT NULL,
+    payer_name TEXT NOT NULL,
+    khandan_name TEXT NOT NULL DEFAULT '',
+    is_family INTEGER NOT NULL DEFAULT 0,
+    family_count INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'active',
+    notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
@@ -152,7 +169,9 @@ export const LOCAL_SCHEMA_SQL: string[] = [
 
   `CREATE TABLE IF NOT EXISTS zakat_payments (
     id TEXT PRIMARY KEY NOT NULL,
-    member_id TEXT NOT NULL,
+    member_id TEXT,
+    zakat_member_id TEXT,
+    family_count_snapshot INTEGER,
     assessment_id TEXT,
     year INTEGER NOT NULL,
     amount INTEGER NOT NULL,
@@ -221,6 +240,7 @@ export const LOCAL_SCHEMA_SQL: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_local_contrib_member_period ON contributions (member_id, period_start);`,
   `CREATE INDEX IF NOT EXISTS idx_local_contrib_period ON contributions (period_start);`,
   `CREATE INDEX IF NOT EXISTS idx_local_zset_updated ON zakat_settings (updated_at);`,
+  `CREATE INDEX IF NOT EXISTS idx_local_zmem_updated ON zakat_members (updated_at);`,
   `CREATE INDEX IF NOT EXISTS idx_local_zass_updated ON zakat_assessments (updated_at);`,
   `CREATE INDEX IF NOT EXISTS idx_local_zass_member_year ON zakat_assessments (member_id, year);`,
   `CREATE INDEX IF NOT EXISTS idx_local_zpay_updated ON zakat_payments (updated_at);`,

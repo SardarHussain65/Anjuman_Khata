@@ -91,6 +91,19 @@ export interface ZakatSettingRow extends SyncBaseRow {
   nisab_amount: number;
   rate_bps: number;
   basis_note: string;
+  per_person_amount: number;
+}
+
+export type ZakatMemberStatus = 'active' | 'inactive';
+
+export interface ZakatMemberRow extends SyncBaseRow {
+  member_no: number;
+  payer_name: string;
+  khandan_name: string;
+  is_family: boolean | number;
+  family_count: number;
+  status: ZakatMemberStatus;
+  notes: string | null;
 }
 
 export interface ZakatAssetsBreakdown {
@@ -117,7 +130,9 @@ export interface ZakatAssessmentRow extends SyncBaseRow {
 }
 
 export interface ZakatPaymentRow extends SyncBaseRow {
-  member_id: string;
+  member_id: string | null;
+  zakat_member_id: string | null;
+  family_count_snapshot: number | null;
   assessment_id: string | null;
   year: number;
   amount: number;
@@ -147,6 +162,7 @@ export type SyncTableName =
   | 'profiles'
   | 'member_tiers'
   | 'contributions'
+  | 'zakat_members'
   | 'zakat_assessments'
   | 'zakat_payments';
 

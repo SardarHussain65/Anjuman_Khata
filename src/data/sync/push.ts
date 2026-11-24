@@ -82,8 +82,8 @@ export async function pushPendingOutbox(db: LocalDbAdapter): Promise<PushBatchSu
             original.op,
             original.record_id,
             original.payload,
-            res.code ?? 'REJECTED',
-            res.message ?? 'Rejected by server',
+            res.code ?? res.error_code ?? 'REJECTED',
+            res.message ?? res.error_message ?? 'Rejected by server',
             new Date().toISOString(),
           ],
         );
@@ -99,7 +99,7 @@ export async function pushPendingOutbox(db: LocalDbAdapter): Promise<PushBatchSu
       }
       await db.run(`DELETE FROM sync_outbox WHERE outbox_id = ?`, [original.outbox_id]);
 
-      if (res.status === 'conflict_merged') merged += 1;
+      if (res.status === 'conflict_merged' || res.status === 'merged') merged += 1;
       else if (res.status === 'conflict_server_wins') serverWins += 1;
       else accepted += 1;
     }
