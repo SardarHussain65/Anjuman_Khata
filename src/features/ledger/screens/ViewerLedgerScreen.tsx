@@ -138,7 +138,15 @@ export function ViewerLedgerScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.topControls, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.gridScroll}
+        contentContainerStyle={styles.gridScrollContent}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+      >
+        <View style={[styles.topControls, { backgroundColor: colors.background }]}>
         <LinearGradient
           colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
           start={{ x: 0, y: 0 }}
@@ -258,14 +266,7 @@ export function ViewerLedgerScreen() {
       {filteredSummaries.length === 0 ? (
         <EmptyState icon="grid-outline" />
       ) : (
-        <ScrollView
-          style={styles.gridScroll}
-          contentContainerStyle={styles.gridScrollContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
-          }
-        >
-          <View style={styles.splitTable}>
+        <View style={styles.splitTable}>
             <View style={[styles.leftColumn, { borderEndColor: colors.borderStrong }]}>
               <View style={[styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
                 <Text style={[styles.headerCellText, { color: colors.text }]}>{t('members.title')}</Text>
@@ -395,8 +396,8 @@ export function ViewerLedgerScreen() {
               </View>
             </ScrollView>
           </View>
-        </ScrollView>
-      )}
+        )}
+      </ScrollView>
 
       {/* Read-Only Receipt Inspector Modal */}
       <Modal

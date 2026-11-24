@@ -153,8 +153,16 @@ export function AdminLedgerScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* Elevated Heritage Emerald Hero + Search & Filters */}
-      <View style={[styles.topControls, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.gridScroll}
+        contentContainerStyle={styles.gridScrollContent}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+      >
+        {/* Elevated Heritage Emerald Hero + Search & Filters (scrolls smoothly with the table) */}
+        <View style={[styles.topControls, { backgroundColor: colors.background }]}>
         <LinearGradient
           colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
           start={{ x: 0, y: 0 }}
@@ -299,14 +307,7 @@ export function AdminLedgerScreen() {
       {filteredSummaries.length === 0 ? (
         <EmptyState icon="grid-outline" />
       ) : (
-        <ScrollView
-          style={styles.gridScroll}
-          contentContainerStyle={styles.gridScrollContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
-          }
-        >
-          <View style={styles.splitTable}>
+        <View style={styles.splitTable}>
             {/* Left Fixed Column: Header + Member Names + Footer */}
             <View style={[styles.leftColumn, { borderEndColor: colors.borderStrong }]}>
               <View style={[styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
@@ -452,8 +453,8 @@ export function AdminLedgerScreen() {
               </View>
             </ScrollView>
           </View>
-        </ScrollView>
-      )}
+        )}
+      </ScrollView>
 
       {/* Thumb-Zone Record Payment FAB */}
       <Pressable
