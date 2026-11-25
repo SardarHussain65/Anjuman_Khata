@@ -43,7 +43,8 @@
       "expo-localization",
       "expo-sharing",
       "expo-asset",
-      "./plugins/withNativePdfDownloader"
+      "./plugins/withNativePdfDownloader",
+      "./plugins/withApkCompression"
     ],
     "experiments": {
       "typedRoutes": true,
