@@ -102,15 +102,13 @@ function PaymentSheetModalInner({
     editingContribution ? String(editingContribution.amount) : initEff ? String(initEff.minAmount) : '',
   );
   const [paidOn, setPaidOn] = useState<string>(editingContribution?.paid_on ?? getKarachiToday());
-  const [kind, setKind] = useState<ContributionKind>(
-    editingContribution?.kind ?? (initPeriod > getKarachiCurrentMonthStart() ? 'advance' : 'monthly'),
-  );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     editingContribution ? parsePaymentMethod(editingContribution.remark) : 'Cash',
   );
   const [showVoidBox, setShowVoidBox] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const fyMonths = useMemo(
@@ -156,6 +154,7 @@ function PaymentSheetModalInner({
   const toggleMonth = (month: string) => {
     if (isEditMode) {
       setSelectedMonths([month]);
+      setMonthPickerOpen(false);
       return;
     }
     setSelectedMonths((prev) =>
@@ -166,6 +165,15 @@ function PaymentSheetModalInner({
         : [...prev, month].sort(),
     );
   };
+
+  const selectedMonthsLabel = useMemo(() => {
+    if (selectedMonths.length === 0) return t('common.month');
+    if (selectedMonths.length === 1) {
+      return formatMonthYear(selectedMonths[0], lang);
+    }
+    const shortList = selectedMonths.map((m) => formatMonthShort(m, lang)).join(', ');
+    return `${shortList} (${selectedMonths.length})`;
+  }, [selectedMonths, lang, t]);
 
   const handleSave = async () => {
     if (saving) return;
@@ -194,13 +202,20 @@ function PaymentSheetModalInner({
     try {
       const currentMonth = getKarachiCurrentMonthStart();
       if (isEditMode && editingContribution) {
+        const periodStart = selectedMonths[0];
+        const computedKind: ContributionKind =
+          editingContribution.kind === 'special'
+            ? 'special'
+            : periodStart > currentMonth
+              ? 'advance'
+              : 'monthly';
         await localUpdate(
           'contributions',
           editingContribution.id,
           {
             amount: parsedAmount,
-            period_start: selectedMonths[0],
-            kind,
+            period_start: periodStart,
+            kind: computedKind,
             paid_on: paidOn,
             remark: paymentMethod,
           },
@@ -210,11 +225,7 @@ function PaymentSheetModalInner({
         // Multi-month entry splits cleanly into one append-only ledger row per month
         for (const periodStart of selectedMonths) {
           const computedKind: ContributionKind =
-            kind === 'special'
-              ? 'special'
-              : periodStart > currentMonth
-                ? 'advance'
-                : 'monthly';
+            periodStart > currentMonth ? 'advance' : 'monthly';
           await localInsert(
             'contributions',
             {
@@ -304,7 +315,10 @@ function PaymentSheetModalInner({
               <Text style={[styles.label, { color: colors.text }]}>{t('members.title')}</Text>
               <Pressable
                 disabled={isEditMode}
-                onPress={() => setMemberPickerOpen((o) => !o)}
+                onPress={() => {
+                  setMonthPickerOpen(false);
+                  setMemberPickerOpen((o) => !o);
+                }}
                 style={[
                   styles.pickerBtn,
                   {
@@ -440,75 +454,96 @@ function PaymentSheetModalInner({
               </View>
             ) : null}
 
-            {/* Month(s) Selector */}
+            {/* Month(s) Dropdown Selector */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.text }]}>{t('common.month')}</Text>
-              {!isEditMode ? (
-                <Text style={[styles.hint, { color: colors.textSecondary }]}>
-                  {t('ledger.multiMonthHint')}
+              <Pressable
+                onPress={() => {
+                  setMemberPickerOpen(false);
+                  setMonthPickerOpen((o) => !o);
+                }}
+                style={[
+                  styles.pickerBtn,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: monthPickerOpen ? colors.primary : colors.borderStrong,
+                    borderRadius: radius.md,
+                  },
+                ]}
+              >
+                <Text style={[styles.pickerText, { color: colors.text }]} numberOfLines={1}>
+                  {selectedMonthsLabel}
                 </Text>
-              ) : null}
-              <View style={styles.monthGrid}>
-                {fyMonths.map((m) => {
-                  const selected = selectedMonths.includes(m);
-                  return (
-                    <Pressable
-                      key={m}
-                      onPress={() => toggleMonth(m)}
+                <Ionicons
+                  name={monthPickerOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+
+              {monthPickerOpen ? (
+                <Card style={styles.monthListCard} padded={false}>
+                  {!isEditMode ? (
+                    <View
                       style={[
-                        styles.monthChip,
-                        {
-                          backgroundColor: selected ? colors.primary : colors.surface,
-                          borderColor: selected ? colors.primary : colors.borderStrong,
-                          borderRadius: radius.sm,
-                        },
+                        styles.monthDropdownHeader,
+                        { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.border },
                       ]}
                     >
-                      <Text style={[styles.monthChipText, { color: selected ? '#FFFFFF' : colors.text }]}>
-                        {formatMonthShort(m, lang)}
+                      <Text style={[styles.hint, { color: colors.textSecondary, flex: 1 }]}>
+                        {t('ledger.multiMonthHint')}
                       </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                      <Pressable onPress={() => setMonthPickerOpen(false)} hitSlop={8}>
+                        <Text style={[styles.doneLink, { color: colors.primary }]}>
+                          {t('common.confirm')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <ScrollView style={styles.monthListScroll} nestedScrollEnabled>
+                    {fyMonths.map((m) => {
+                      const selected = selectedMonths.includes(m);
+                      return (
+                        <Pressable
+                          key={m}
+                          onPress={() => toggleMonth(m)}
+                          style={[
+                            styles.monthDropdownRow,
+                            {
+                              borderBottomColor: colors.border,
+                              backgroundColor: selected ? colors.primarySoft : 'transparent',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={selected ? 'checkbox' : 'square-outline'}
+                            size={18}
+                            color={selected ? colors.primary : colors.textMuted}
+                          />
+                          <Text
+                            style={[
+                              styles.memberRowText,
+                              {
+                                color: selected ? colors.primary : colors.text,
+                                fontWeight: selected ? '700' : '500',
+                              },
+                            ]}
+                          >
+                            {formatMonthYear(m, lang)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </Card>
+              ) : null}
+
               {!isEditMode && selectedMonths.length > 1 && parsedAmount ? (
                 <Text style={[styles.splitPreview, typography.numeric, { color: colors.primary }]}>
                   {selectedMonths.length} × {formatPKR(parsedAmount)} ={' '}
-                  {formatPKR(selectedMonths.length * parsedAmount)} (
-                  {selectedMonths.map((m) => formatMonthYear(m, lang)).join(', ')})
+                  {formatPKR(selectedMonths.length * parsedAmount)}
                 </Text>
               ) : null}
-            </View>
-
-            {/* Kind Selector (monthly / special / advance — localized) */}
-            <View style={styles.kindRow}>
-              {(
-                [
-                  { key: 'monthly', label: t('ledger.kindMonthly') },
-                  { key: 'special', label: t('ledger.kindSpecial') },
-                  { key: 'advance', label: t('ledger.kindAdvance') },
-                ] as const
-              ).map(({ key, label }) => {
-                const active = kind === key;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setKind(key)}
-                    style={[
-                      styles.kindChip,
-                      {
-                        backgroundColor: active ? colors.primarySoft : colors.surface,
-                        borderColor: active ? colors.primary : colors.border,
-                        borderRadius: radius.md,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.kindText, { color: active ? colors.primary : colors.textSecondary }]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
             </View>
 
             <TextField
@@ -672,25 +707,27 @@ const styles = StyleSheet.create({
   amtChipText: { fontSize: 13, fontWeight: '700' },
   warnBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
   warnText: { flex: 1, fontSize: 12, fontWeight: '600' },
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  monthChip: {
-    width: '23%',
-    minHeight: 40,
-    borderWidth: 1,
+  monthListCard: { maxHeight: 220, overflow: 'hidden' },
+  monthListScroll: { maxHeight: 184 },
+  monthDropdownHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
-  monthChipText: { fontSize: 13, fontWeight: '600' },
+  doneLink: { fontSize: 13, fontWeight: '700' },
+  monthDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   splitPreview: { fontSize: 12, fontWeight: '700', marginTop: 4 },
-  kindRow: { flexDirection: 'row', gap: 8 },
-  kindChip: {
-    flex: 1,
-    minHeight: 40,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kindText: { fontSize: 13, fontWeight: '600' },
   methodRow: { flexDirection: 'row', gap: 8 },
   methodBox: {
     flex: 1,

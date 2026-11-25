@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,7 +21,8 @@ import { Card } from '@/core/ui/Card';
 import { ComplianceBadge } from '@/core/ui/Badge';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
-import { ProfileRow } from '@/data/db/types';
+import { MemberStatus, ProfileRow } from '@/data/db/types';
+import { runSync } from '@/data/sync/syncEngine';
 import { findCurrentFiscalYear } from '@/core/rules/fiscalYear';
 import {
   computeLifetimeCharityTotal,
@@ -37,6 +39,8 @@ export function ViewerMembersScreen() {
   const { data, isLoading } = useRegisterSnapshot();
 
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | MemberStatus>('all');
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedMember, setSelectedMember] = useState<ProfileRow | null>(null);
   const currentMonth = getKarachiCurrentMonthStart();
 
@@ -45,14 +49,25 @@ export function ViewerMembersScreen() {
     [data],
   );
 
+  const counts = useMemo(() => {
+    const profiles = data?.profiles ?? [];
+    return {
+      total: profiles.length,
+      active: profiles.filter((p) => p.status === 'active').length,
+      voluntary: profiles.filter((p) => p.status === 'non_earning').length,
+      inactive: profiles.filter((p) => p.status === 'inactive').length,
+    };
+  }, [data]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (data?.profiles ?? []).filter((p) => {
+      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
       if (!q) return true;
       const hay = `${p.member_no} ${p.full_name} ${p.full_name_ur ?? ''} ${p.designation ?? ''} ${p.tag ?? ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [data, search]);
+  }, [data, search, statusFilter]);
 
   const selectedSummary = useMemo(() => {
     if (!selectedMember || !data || !activeFy) return null;
@@ -67,29 +82,104 @@ export function ViewerMembersScreen() {
     });
   }, [selectedMember, data, activeFy, currentMonth]);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await runSync();
+    setRefreshing(false);
+  };
+
   if (isLoading && !data) {
     return <LoadingState />;
   }
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.controls, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md }]}>
-          <Ionicons name="search" size={16} color={colors.textMuted} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t('ledger.searchPlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            style={[styles.searchInput, { color: colors.text }]}
-          />
-        </View>
-      </View>
-
       <FlashList
         data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+        ListHeaderComponent={
+          <View style={styles.headerBlock}>
+            {/* Directory Stats Strip */}
+            <View style={styles.statsStrip}>
+              <Card style={styles.statBox}>
+                <Text style={[styles.statNum, typography.numeric, { color: colors.text }]}>
+                  {counts.total}
+                </Text>
+                <Text style={[styles.statLbl, { color: colors.textSecondary }]}>{t('common.all')}</Text>
+              </Card>
+              <Card variant="charity" style={styles.statBox}>
+                <Text style={[styles.statNum, typography.numeric, { color: colors.primary }]}>
+                  {counts.active}
+                </Text>
+                <Text style={[styles.statLbl, { color: colors.primary }]}>{t('memberStatus.active')}</Text>
+              </Card>
+              <Card style={styles.statBox}>
+                <Text style={[styles.statNum, typography.numeric, { color: colors.text }]}>
+                  {counts.voluntary}
+                </Text>
+                <Text style={[styles.statLbl, { color: colors.textSecondary }]}>
+                  {t('memberStatus.non_earning')}
+                </Text>
+              </Card>
+            </View>
+
+            {/* Search Bar */}
+            <View
+              style={[
+                styles.searchBox,
+                { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg },
+              ]}
+            >
+              <Ionicons name="search" size={16} color={colors.textMuted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('ledger.searchPlaceholder')}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.searchInput, { color: colors.text }]}
+              />
+              {search ? (
+                <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={17} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            {/* Status Filter Pills */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+            >
+              {(['all', 'active', 'non_earning', 'inactive'] as const).map((st) => {
+                const active = statusFilter === st;
+                return (
+                  <Pressable
+                    key={st}
+                    onPress={() => setStatusFilter(st)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.surface,
+                        borderColor: active ? colors.primary : colors.border,
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.filterText, { color: active ? '#FFFFFF' : colors.textSecondary }]}>
+                      {st === 'all' ? t('common.all') : t(`memberStatus.${st}`)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        }
         ListEmptyComponent={<EmptyState icon="people-outline" />}
         renderItem={({ item }) => {
           const eff = resolveEffectiveTierForMonth(
@@ -102,7 +192,10 @@ export function ViewerMembersScreen() {
           const lifetime = computeLifetimeCharityTotal(item.id, data?.contributions ?? []);
           const displayName = lang === 'ur' && item.full_name_ur ? item.full_name_ur : item.full_name;
           return (
-            <Pressable onPress={() => setSelectedMember(item)}>
+            <Pressable
+              onPress={() => setSelectedMember(item)}
+              style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+            >
               <Card style={styles.memberCard}>
                 <View style={styles.rowBetween}>
                   <View
@@ -119,6 +212,7 @@ export function ViewerMembersScreen() {
                     <Text
                       style={[
                         styles.avatarText,
+                        typography.numeric,
                         { color: item.status === 'active' ? colors.primary : colors.textSecondary },
                       ]}
                     >
@@ -126,28 +220,36 @@ export function ViewerMembersScreen() {
                     </Text>
                   </View>
                   <View style={styles.flex1}>
-                    <Text style={[styles.memberName, { color: colors.text }]}>
+                    <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>
                       {displayName}
                     </Text>
-                    <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                    <Text style={[styles.meta, { color: colors.textSecondary }]} numberOfLines={1}>
                       {item.designation ? `${item.designation} · ` : ''}
                       {t(`memberStatus.${item.status}`)}
                     </Text>
-                    <Text style={[styles.tierMeta, { color: colors.primary }]}>
-                      {item.status === 'non_earning'
-                        ? t('dashboard.noTierExempt')
-                        : eff
-                          ? `${lang === 'ur' && eff.tierNameUr ? eff.tierNameUr : eff.tierName} (${formatPKR(eff.minAmount)}/mo)`
-                          : t('dashboard.noTierExempt')}
-                    </Text>
+                    <View
+                      style={[
+                        styles.tierPill,
+                        { backgroundColor: colors.primarySoft, borderRadius: radius.pill },
+                      ]}
+                    >
+                      <Text style={[styles.tierMeta, { color: colors.primary }]} numberOfLines={1}>
+                        {item.status === 'non_earning'
+                          ? t('dashboard.noTierExempt')
+                          : eff
+                            ? `${lang === 'ur' && eff.tierNameUr ? eff.tierNameUr : eff.tierName} · ${formatPKR(eff.minAmount)}/mo`
+                            : t('dashboard.noTierExempt')}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
+                  <View style={styles.rightCol}>
                     <Text style={[styles.lifetimeVal, typography.numeric, { color: colors.primary }]}>
                       {formatPKR(lifetime)}
                     </Text>
-                    <Text style={[styles.meta, { color: colors.textMuted }]}>
-                      {t('common.total')}
-                    </Text>
+                    <View style={styles.chevronRow}>
+                      <Text style={[styles.meta, { color: colors.textMuted }]}>{t('common.total')}</Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                    </View>
                   </View>
                 </View>
               </Card>
@@ -171,9 +273,16 @@ export function ViewerMembersScreen() {
             ]}
           >
             <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                #{selectedMember?.member_no} · {selectedMember?.full_name}
-              </Text>
+              <View style={styles.flex1}>
+                <Text style={[styles.sheetTitle, { color: colors.text }]} numberOfLines={1}>
+                  #{selectedMember?.member_no} · {selectedMember?.full_name}
+                </Text>
+                {selectedMember?.designation ? (
+                  <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                    {selectedMember.designation}
+                  </Text>
+                ) : null}
+              </View>
               <Pressable onPress={() => setSelectedMember(null)} style={styles.closeBtn}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </Pressable>
@@ -196,32 +305,37 @@ export function ViewerMembersScreen() {
                   </Card>
 
                   <View style={styles.monthGrid}>
-                    {selectedSummary.months.map((cell) => (
-                      <View
-                        key={cell.periodStart}
-                        style={[
-                          styles.monthTile,
-                          {
-                            backgroundColor:
-                              cell.status === 'met'
-                                ? colors.metBg
-                                : cell.status === 'short'
-                                  ? colors.shortBg
-                                  : cell.status === 'unpaid'
-                                    ? colors.unpaidBg
-                                    : colors.exemptBg,
-                            borderRadius: radius.md,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.meta, { color: colors.text }]}>
-                          {formatMonthShort(cell.periodStart, lang)}
-                        </Text>
-                        <Text style={[styles.tileAmt, typography.numeric, { color: colors.text }]}>
-                          {cell.paidAmount > 0 ? formatPKR(cell.paidAmount) : '—'}
-                        </Text>
-                      </View>
-                    ))}
+                    {selectedSummary.months.map((cell) => {
+                      const bg =
+                        cell.status === 'met'
+                          ? colors.metBg
+                          : cell.status === 'short'
+                            ? colors.shortBg
+                            : cell.status === 'unpaid'
+                              ? colors.unpaidBg
+                              : colors.surfaceSubtle;
+                      const fg =
+                        cell.status === 'met'
+                          ? colors.metText
+                          : cell.status === 'short'
+                            ? colors.shortText
+                            : cell.status === 'unpaid'
+                              ? colors.unpaidText
+                              : colors.textMuted;
+                      return (
+                        <View
+                          key={cell.periodStart}
+                          style={[styles.monthTile, { backgroundColor: bg, borderRadius: radius.md }]}
+                        >
+                          <Text style={[styles.meta, { color: fg, fontWeight: '700' }]}>
+                            {formatMonthShort(cell.periodStart, lang)}
+                          </Text>
+                          <Text style={[styles.tileAmt, typography.numeric, { color: fg }]}>
+                            {cell.paidAmount > 0 ? formatPKR(cell.paidAmount) : '—'}
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 </>
               ) : null}
@@ -235,16 +349,30 @@ export function ViewerMembersScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  controls: { padding: 12, borderBottomWidth: 1 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderWidth: 1, minHeight: 42 },
+  headerBlock: { gap: 10, marginBottom: 12 },
+  statsStrip: { flexDirection: 'row', gap: 8 },
+  statBox: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8, gap: 2 },
+  statNum: { fontSize: 18, fontWeight: '800' },
+  statLbl: { fontSize: 11, fontWeight: '600' },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    minHeight: 44,
+  },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
-  list: { padding: 14, paddingBottom: 24 },
+  filterRow: { gap: 8 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1 },
+  filterText: { fontSize: 12, fontWeight: '700' },
+  list: { padding: 14, paddingBottom: 28 },
   memberCard: { marginBottom: 10 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   avatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
@@ -253,16 +381,27 @@ const styles = StyleSheet.create({
   flex1: { flex: 1, gap: 2 },
   memberName: { fontSize: 15, fontWeight: '700' },
   meta: { fontSize: 12 },
-  tierMeta: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  tierPill: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, marginTop: 4 },
+  tierMeta: { fontSize: 11, fontWeight: '700' },
+  rightCol: { alignItems: 'flex-end', gap: 2 },
+  chevronRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   lifetimeVal: { fontSize: 15, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { maxHeight: '85%' },
-  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  sheetTitle: { fontSize: 17, fontWeight: '700' },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: '800' },
   closeBtn: { padding: 6 },
-  sheetBody: { padding: 16, gap: 14, paddingBottom: 32 },
+  sheetBody: { padding: 16, gap: 14 },
   heroAmt: { fontSize: 24, fontWeight: '800' },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  monthTile: { width: '31.2%', paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center', gap: 2 },
-  tileAmt: { fontSize: 12, fontWeight: '700' },
+  monthTile: { width: '31.3%', paddingVertical: 11, paddingHorizontal: 6, alignItems: 'center', gap: 3 },
+  tileAmt: { fontSize: 12, fontWeight: '800' },
 });
