@@ -1,4 +1,13 @@
-import React from 'react';
+import { switchLanguage, useAppLanguage } from '@/core/i18n';
+import { useTheme } from '@/core/theme/ThemeProvider';
+import { Button } from '@/core/ui/Button';
+import { Card } from '@/core/ui/Card';
+import { TextField } from '@/core/ui/TextField';
+import { Ionicons } from '@expo/vector-icons';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'expo-router';
+import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   Image,
   KeyboardAvoidingView,
@@ -10,17 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslation } from 'react-i18next';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/core/theme/ThemeProvider';
-import { switchLanguage, useAppLanguage } from '@/core/i18n';
-import { Button } from '@/core/ui/Button';
-import { Card } from '@/core/ui/Card';
-import { TextField } from '@/core/ui/TextField';
 import { useAuthStore } from '../store/authStore';
 
 const loginSchema = z.object({
