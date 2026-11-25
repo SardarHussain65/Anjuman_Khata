@@ -42,7 +42,8 @@
       "expo-secure-store",
       "expo-localization",
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withNativePdfDownloader"
     ],
     "experiments": {
       "typedRoutes": true,

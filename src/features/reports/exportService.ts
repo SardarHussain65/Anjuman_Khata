@@ -1,7 +1,19 @@
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
-import { Directory, File, Paths } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
+
+interface NativePdfDownloader {
+  savePdfToDownloads(
+    base64Data: string,
+    fileName: string,
+  ): Promise<{ uri: string; displayPath: string }>;
+  openPdfUri(uriString: string, title: string): Promise<boolean>;
+  sharePdfUri(uriString: string, title: string): Promise<boolean>;
+}
+
+const nativePdfDownloader: NativePdfDownloader | undefined =
+  Platform.OS === 'android' ? NativeModules.PdfDownloader : undefined;
 
 let cachedUrduFontBase64: string | null = null;
 
@@ -9,8 +21,6 @@ const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345
 
 /**
  * Pure-JS Uint8Array -> Base64 encoder (zero Buffer/btoa dependency, works on Hermes Android & iOS).
- * Required because expo-file-system's native File.write() accepts `Either<String, NativeArrayBuffer>`
- * (not Uint8Array), whereas `write(base64, { encoding: 'base64' })` decodes directly to native ByteArray/Data.
  */
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
   const len = bytes.length;
@@ -72,7 +82,6 @@ function normalizePdfName(fileName: string): string {
 
 /**
  * Writes pure-JS generated PDF bytes to the app's cache directory using native base64 decoding.
- * Works 100% offline on every Android & iOS version (no WebView / expo-print / ArrayBuffer JSI issues).
  */
 export async function writePdfBytesToCache(
   pdfBytes: Uint8Array,
@@ -89,11 +98,19 @@ export async function writePdfBytesToCache(
 }
 
 /**
- * Generates a real PDF file in cache and opens the native Share Sheet (WhatsApp, Gmail, Drive, PDF viewer).
+ * Generates a real PDF file and opens the native Share Sheet (WhatsApp, Gmail, Drive, PDF viewer).
  */
 export async function sharePdfBytes(pdfBytes: Uint8Array, fileName: string): Promise<string> {
-  const { file, safeName } = await writePdfBytesToCache(pdfBytes, fileName);
+  const safeName = normalizePdfName(fileName);
+  const base64 = uint8ArrayToBase64(pdfBytes);
 
+  if (Platform.OS === 'android' && nativePdfDownloader) {
+    const saved = await nativePdfDownloader.savePdfToDownloads(base64, safeName);
+    await nativePdfDownloader.sharePdfUri(saved.uri, safeName);
+    return saved.uri;
+  }
+
+  const { file } = await writePdfBytesToCache(pdfBytes, safeName);
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(file.uri, {
       mimeType: 'application/pdf',
@@ -110,10 +127,25 @@ export async function sharePdfBytes(pdfBytes: Uint8Array, fileName: string): Pro
 }
 
 /**
- * Opens a generated PDF directly in the device's native PDF viewer (`ACTION_VIEW` / Quick Look),
- * falling back to the Share Sheet if no viewer is registered.
+ * Opens a saved/cached PDF in the device's native PDF viewer (`ACTION_VIEW` / Quick Look),
+ * falling back to the Share Sheet if needed.
  */
-export async function previewOrSharePdfFile(file: File, safeName: string): Promise<void> {
+export async function previewOrSharePdfFile(
+  target: { uri?: string; cacheFile?: File | null },
+  safeName: string,
+): Promise<void> {
+  if (Platform.OS === 'android' && nativePdfDownloader && target.uri) {
+    try {
+      await nativePdfDownloader.openPdfUri(target.uri, safeName);
+      return;
+    } catch {
+      await nativePdfDownloader.sharePdfUri(target.uri, safeName);
+      return;
+    }
+  }
+
+  const file = target.cacheFile;
+  if (!file) return;
   try {
     if (await file.canPreview({ mimeType: 'application/pdf' })) {
       await file.preview({ mimeType: 'application/pdf', title: safeName });
@@ -133,35 +165,48 @@ export async function previewOrSharePdfFile(file: File, safeName: string): Promi
 
 /**
  * Downloads/saves a real PDF directly onto the user's phone storage:
- * - Android: opens the native folder picker (e.g. Downloads), creates `<fileName>.pdf`,
- *   and writes the decoded PDF bytes directly to that folder.
+ * - Android: 1-tap direct save to `Downloads/AnjumanKhata/<fileName>.pdf` via native
+ *   Android MediaStore.Downloads (zero folder picker, zero SAF bugs, zero permissions on Android 10+).
  * - iOS: opens the native Share Sheet ("Save to Files").
  */
 export async function downloadPdfBytesToDevice(
   pdfBytes: Uint8Array,
   fileName: string,
-): Promise<{ saved: boolean; canceled?: boolean; fileName: string; cacheFile: File }> {
-  const { file: cacheFile, safeName, base64 } = await writePdfBytesToCache(pdfBytes, fileName);
+): Promise<{
+  saved: boolean;
+  fileName: string;
+  displayPath?: string;
+  uri?: string;
+  cacheFile?: File | null;
+}> {
+  const safeName = normalizePdfName(fileName);
+  const base64 = uint8ArrayToBase64(pdfBytes);
 
-  if (Platform.OS === 'android') {
-    try {
-      const pickedDir = await Directory.pickDirectoryAsync();
-      const targetFile = pickedDir.createFile(safeName, 'application/pdf');
-      await targetFile.write(base64, { encoding: 'base64' });
-      return { saved: true, fileName: safeName, cacheFile };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/cancel|dismiss|abort|user/i.test(msg)) {
-        return { saved: false, canceled: true, fileName: safeName, cacheFile };
-      }
-      // Fallback: if SAF folder picker is unavailable on a specific OEM ROM, open Share Sheet / Viewer
-      await previewOrSharePdfFile(cacheFile, safeName);
-      return { saved: false, fileName: safeName, cacheFile };
-    }
+  if (Platform.OS === 'android' && nativePdfDownloader) {
+    const saved = await nativePdfDownloader.savePdfToDownloads(base64, safeName);
+    return {
+      saved: true,
+      fileName: safeName,
+      displayPath: saved.displayPath,
+      uri: saved.uri,
+      cacheFile: null,
+    };
   }
 
-  await sharePdfBytes(pdfBytes, safeName);
-  return { saved: true, fileName: safeName, cacheFile };
+  const { file: cacheFile } = await writePdfBytesToCache(pdfBytes, safeName);
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(cacheFile.uri, {
+      mimeType: 'application/pdf',
+      dialogTitle: safeName,
+      UTI: 'com.adobe.pdf',
+    });
+  }
+  return {
+    saved: true,
+    fileName: safeName,
+    uri: cacheFile.uri,
+    cacheFile,
+  };
 }
 
 /** Writes UTF-8 CSV to cache and opens the native share sheet. */

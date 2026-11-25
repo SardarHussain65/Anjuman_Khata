@@ -99,15 +99,22 @@ export function AdminReportsScreen() {
   const handleDownloadPdf = async (pdfBytes: Uint8Array, fileName: string) => {
     const res = await downloadPdfBytesToDevice(pdfBytes, fileName);
     if (res.saved) {
+      const savedWhere = res.displayPath ?? res.fileName;
       showAppAlert(
         t('common.confirm'),
-        reportLang === 'ur' ? `فائل محفوظ ہو گئی: ${res.fileName}` : `Saved ${res.fileName}`,
+        reportLang === 'ur'
+          ? `فائل محفوظ ہو گئی: ${savedWhere}`
+          : `Saved to ${savedWhere}`,
         [
           { text: t('common.close'), style: 'cancel' },
           {
             text: reportLang === 'ur' ? 'کھولیں' : 'Open PDF',
             style: 'default',
-            onPress: () => void previewOrSharePdfFile(res.cacheFile, res.fileName),
+            onPress: () =>
+              void previewOrSharePdfFile(
+                { uri: res.uri, cacheFile: res.cacheFile },
+                res.fileName,
+              ),
           },
         ],
         'success',
