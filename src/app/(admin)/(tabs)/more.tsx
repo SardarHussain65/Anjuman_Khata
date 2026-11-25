@@ -22,7 +22,7 @@ import { invokeAdminResetPassword } from '@/data/api/adminEdge';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
 
-const APP_LOGO = require('../../../assets/images/logo.png');
+const APP_LOGO = require('../../../../assets/images/logo.png');
 
 export default function AdminMoreRoute() {
   const { colors, radius, isDark } = useTheme();

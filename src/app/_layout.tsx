@@ -79,7 +79,7 @@ function RootNavigator() {
       <StatusBar style={!ready ? 'light' : isDark ? 'light' : 'dark'} />
       <InitialSyncBanner />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!isAdmin} redirectTo="/(admin)">
+        <Stack.Protected guard={!isAdmin} redirectTo="/(admin)/(tabs)">
           <Stack.Screen name="(user)" />
           <Stack.Screen name="(auth)" options={{ presentation: 'modal' }} />
         </Stack.Protected>

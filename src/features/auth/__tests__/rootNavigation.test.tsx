@@ -12,7 +12,7 @@ function MockRootLayout() {
   const isAdmin = useMockAdminStore((s) => s.isAdmin);
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!isAdmin} redirectTo="/(admin)">
+      <Stack.Protected guard={!isAdmin} redirectTo="/(admin)/(tabs)">
         <Stack.Screen name="(user)" />
         <Stack.Screen name="(auth)" options={{ presentation: 'modal' }} />
       </Stack.Protected>
@@ -29,6 +29,15 @@ function MockUserTabs() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="profile" />
     </Tabs>
+  );
+}
+
+function MockAdminStack() {
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="reports" />
+    </Stack>
   );
 }
 
@@ -55,9 +64,14 @@ function buildRoutes() {
       default: MockRootLayout,
       unstable_settings: { anchor: '(user)' },
     },
-    '(admin)/_layout': MockAdminTabs,
-    '(admin)/index': () => <Text>Admin Ledger Screen</Text>,
-    '(admin)/more': () => <Text>Admin More Screen</Text>,
+    '(admin)/_layout': {
+      default: MockAdminStack,
+      unstable_settings: { anchor: '(tabs)' },
+    },
+    '(admin)/(tabs)/_layout': MockAdminTabs,
+    '(admin)/(tabs)/index': () => <Text>Admin Ledger Screen</Text>,
+    '(admin)/(tabs)/more': () => <Text>Admin More Screen</Text>,
+    '(admin)/reports': () => <Text>Admin Reports Screen</Text>,
     '(auth)/_layout': {
       default: MockAuthStack,
       unstable_settings: { anchor: 'login' },
@@ -96,6 +110,13 @@ describe('Root route protection and initial launch', () => {
     });
     await waitFor(() => {
       expect(result.getByText('Admin Ledger Screen')).toBeTruthy();
+    });
+
+    await act(async () => {
+      router.push('/(admin)/reports');
+    });
+    await waitFor(() => {
+      expect(result.getByText('Admin Reports Screen')).toBeTruthy();
     });
 
     await act(async () => {
