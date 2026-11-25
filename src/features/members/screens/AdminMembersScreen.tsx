@@ -1,0 +1,289 @@
+import React, { useMemo, useState } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+import { useTheme } from '@/core/theme/ThemeProvider';
+import { formatPKR } from '@/core/money';
+import { getKarachiCurrentMonthStart } from '@/core/dates';
+import { useAppLanguage } from '@/core/i18n';
+import { Card } from '@/core/ui/Card';
+import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
+import { useRegisterSnapshot } from '@/data/db/queries';
+import { MemberStatus, ProfileRow } from '@/data/db/types';
+import { resolveEffectiveTierForMonth } from '@/core/rules/tiers';
+import { MemberFormModal } from '../components/MemberFormModal';
+import { TierAssignmentModal } from '../components/TierAssignmentModal';
+
+export function AdminMembersScreen() {
+  const { colors, radius } = useTheme();
+  const { t } = useTranslation();
+  const lang = useAppLanguage();
+  const { data, isLoading } = useRegisterSnapshot();
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | MemberStatus>('all');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<ProfileRow | null>(null);
+  const [tierMember, setTierMember] = useState<ProfileRow | null>(null);
+
+  const currentMonth = getKarachiCurrentMonthStart();
+
+  const nextMemberNo = useMemo(() => {
+    const maxNo = (data?.profiles ?? []).reduce((m, p) => Math.max(m, p.member_no), 0);
+    return maxNo + 1;
+  }, [data]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (data?.profiles ?? []).filter((p) => {
+      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+      if (!q) return true;
+      const hay = `${p.member_no} ${p.full_name} ${p.full_name_ur ?? ''} ${p.phone ?? ''} ${p.designation ?? ''} ${p.tag ?? ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [data, search, statusFilter]);
+
+  if (isLoading && !data) {
+    return <LoadingState />;
+  }
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[styles.controls, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View style={[styles.searchBox, { backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md }]}>
+          <Ionicons name="search" size={16} color={colors.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={t('ledger.searchPlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
+          />
+        </View>
+        <View style={styles.filterRow}>
+          {(['all', 'active', 'non_earning', 'inactive'] as const).map((st) => {
+            const active = statusFilter === st;
+            return (
+              <Pressable
+                key={st}
+                onPress={() => setStatusFilter(st)}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: active ? colors.primarySoft : colors.background,
+                    borderColor: active ? colors.primary : colors.border,
+                    borderRadius: radius.pill,
+                  },
+                ]}
+              >
+                <Text style={[styles.filterText, { color: active ? colors.primary : colors.textSecondary }]}>
+                  {st === 'all' ? t('common.all') : t(`memberStatus.${st}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <FlashList
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={<EmptyState icon="people-outline" />}
+        renderItem={({ item }) => {
+          const eff = resolveEffectiveTierForMonth(
+            item.id,
+            currentMonth,
+            data?.memberTiers ?? [],
+            data?.tiers ?? [],
+            data?.tierRates ?? [],
+          );
+          const displayName =
+            lang === 'ur' && item.full_name_ur ? item.full_name_ur : item.full_name;
+          return (
+            <Card style={styles.memberCard}>
+              <View style={styles.cardTop}>
+                <View
+                  style={[
+                    styles.avatarCircle,
+                    {
+                      backgroundColor:
+                        item.status === 'active' ? colors.primarySoft : colors.surfaceSubtle,
+                      borderColor:
+                        item.status === 'active' ? colors.primaryBorder : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.avatarText,
+                      {
+                        color:
+                          item.status === 'active' ? colors.primary : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    #{item.member_no}
+                  </Text>
+                </View>
+                <View style={styles.cardInfo}>
+                  <Text style={[styles.memberName, { color: colors.text }]}>
+                    {displayName}
+                  </Text>
+                  <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                    {item.designation ? `${item.designation} · ` : ''}
+                    {t(`memberStatus.${item.status}`)}
+                  </Text>
+                  <View
+                    style={[
+                      styles.tierPill,
+                      {
+                        backgroundColor:
+                          item.status === 'non_earning' || !eff
+                            ? colors.surfaceSubtle
+                            : colors.primarySoft,
+                        borderRadius: radius.pill,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tierMeta,
+                        {
+                          color:
+                            item.status === 'non_earning' || !eff
+                              ? colors.textSecondary
+                              : colors.primary,
+                        },
+                      ]}
+                    >
+                      {item.status === 'non_earning'
+                        ? t('dashboard.noTierExempt')
+                        : eff
+                          ? `${lang === 'ur' && eff.tierNameUr ? eff.tierNameUr : eff.tierName} · ${formatPKR(eff.minAmount)}/mo`
+                          : t('dashboard.noTierExempt')}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.cardActions}>
+                <Pressable
+                  onPress={() => {
+                    setEditingMember(item);
+                    setFormOpen(true);
+                  }}
+                  style={[styles.miniBtn, { borderColor: colors.borderStrong, borderRadius: radius.sm }]}
+                >
+                  <Ionicons name="create-outline" size={14} color={colors.text} />
+                  <Text style={[styles.miniBtnText, { color: colors.text }]}>{t('common.edit')}</Text>
+                </Pressable>
+
+                {item.status !== 'non_earning' ? (
+                  <Pressable
+                    onPress={() => setTierMember(item)}
+                    style={[styles.miniBtn, { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft, borderRadius: radius.sm }]}
+                  >
+                    <Ionicons name="layers-outline" size={14} color={colors.primary} />
+                    <Text style={[styles.miniBtnText, { color: colors.primary }]}>{t('members.assignTier')}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </Card>
+          );
+        }}
+      />
+
+      <Pressable
+        onPress={() => {
+          setEditingMember(null);
+          setFormOpen(true);
+        }}
+        style={[styles.fab, { backgroundColor: colors.primary, borderRadius: radius.pill }]}
+      >
+        <Ionicons name="person-add" size={20} color="#FFFFFF" />
+        <Text style={styles.fabText}>{t('members.addMember')}</Text>
+      </Pressable>
+
+      <MemberFormModal
+        visible={formOpen}
+        onClose={() => setFormOpen(false)}
+        editingMember={editingMember}
+        tiers={data?.tiers ?? []}
+        nextMemberNo={nextMemberNo}
+      />
+
+      <TierAssignmentModal
+        visible={Boolean(tierMember)}
+        onClose={() => setTierMember(null)}
+        member={tierMember}
+        tiers={data?.tiers ?? []}
+        memberTiers={data?.memberTiers ?? []}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  controls: { padding: 12, gap: 8, borderBottomWidth: 1 },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    minHeight: 42,
+  },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
+  filterText: { fontSize: 12, fontWeight: '600' },
+  list: { padding: 14, paddingBottom: 90 },
+  memberCard: { marginBottom: 10, gap: 10 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 13, fontWeight: '800' },
+  cardInfo: { flex: 1, gap: 3 },
+  memberName: { fontSize: 16, fontWeight: '700' },
+  meta: { fontSize: 12 },
+  tierPill: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, marginTop: 2 },
+  tierMeta: { fontSize: 11, fontWeight: '700' },
+  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  miniBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    minHeight: 36,
+  },
+  miniBtnText: { fontSize: 12, fontWeight: '600' },
+  fab: {
+    position: 'absolute',
+    end: 16,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    minHeight: 52,
+    elevation: 4,
+  },
+  fabText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+});

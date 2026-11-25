@@ -1,56 +1,25 @@
-# Welcome to your Expo app 👋
+# Anjuman Khata (انجمن کھاتہ)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Production-grade, **offline-first** React Native (Expo SDK 58) + Supabase mobile application that digitizes a community charity contribution register (~55–60 members) and a strictly separated Zakat register.
 
-## Get started
+## Highlights
+- **Offline-First Architecture**: Local SQLite (`expo-sqlite`, WAL mode) with instant optimistic reads/writes, chunked `expo-secure-store` session persistence for airplane-mode launches, registry-driven `pull_changes`/`push_changes` sync, field-level conflict merging with loser audit logging, and non-blocking quarantine (`YEAR_CLOSED`, validation errors).
+- **Ledger-First Financial Integrity**: Append-only charity ledger (`contributions`) in integer PKR (never floats), effective-dated tier assignments & rate history (`member_tiers`, `tier_rates`) that never retroactively alter past compliance, `non_earning` exemption rules, and fiscal-year locking with audited reopening.
+- **Strictly Isolated Zakat Subsystem**: Configurable yearly Nisab & basis notes (`zakat_settings`), exact integer half-up 2.5% calculation mirrored in TypeScript and Postgres triggers, immutable assessment snapshots (`zakat_assessments`), private RLS protection for declared assets, and a separate `zakat_payments` ledger.
+- **Bilingual English + Urdu (RTL) & Offline PDFs**: Full EN/UR toggle with `I18nManager` RTL support, Heritage Emerald & Antique Gold visual separation, WhatsApp unpaid-list sharing, UTF-8 BOM CSV export, and 5 offline A4 PDF reports with embedded base64 `Noto Naskh Arabic` font.
+- **Database-Enforced Security**: Row-Level Security on every table, `SECURITY INVOKER` sync RPCs, read-only standard users, tamper-evident `audit_log`, and server-only `admin-create-user` Edge Function.
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Quick Start
+See [docs/setup.md](docs/setup.md) for the complete < 15-minute setup guide.
 
 ```bash
-npm run reset-project
+pnpm install
+cp .env.example .env
+pnpm run typecheck && pnpm run lint && pnpm test && pnpm run test:sql
+npx expo start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Documentation
+- [Architecture Overview](docs/architecture.md)
+- [Architectural Decisions & Assumptions](docs/decisions.md)
+- [Developer Setup Guide](docs/setup.md)
