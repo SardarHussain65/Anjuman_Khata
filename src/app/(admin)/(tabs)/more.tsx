@@ -6,19 +6,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ThemePreference, useTheme, useThemePreferenceStore } from '@/core/theme/ThemeProvider';
 import { switchLanguage, useAppLanguage } from '@/core/i18n';
+import { isSuperAdminRole } from '@/core/permissions';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { showAppAlert } from '@/core/ui/AppDialog';
-import { TextField } from '@/core/ui/TextField';
-import { invokeAdminResetPassword } from '@/data/api/adminEdge';
+import { updateOwnPassword } from '@/data/api/adminEdge';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
 
@@ -35,25 +36,54 @@ export default function AdminMoreRoute() {
   const setThemePref = useThemePreferenceStore((s) => s.setPreference);
   const setSyncDrawerOpen = useSyncStatusStore((s) => s.setDrawerOpen);
   const isOnline = useSyncStatusStore((s) => s.isOnline);
+
+  const isSuperAdmin = isSuperAdminRole(profile?.role);
+
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
 
-  const handleResetPassword = async () => {
-    if (!profile?.id || newPassword.length < 6) {
-      showAppAlert(t('common.required'), 'Password must be at least 6 characters.');
+  const handleChangeOwnPassword = async () => {
+    if (newPassword.length < 6) {
+      showAppAlert(
+        t('common.required'),
+        lang === 'ur'
+          ? 'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔'
+          : 'Password must be at least 6 characters.',
+      );
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showAppAlert(
+        t('common.required'),
+        lang === 'ur'
+          ? 'دونوں پاس ورڈ ایک جیسے نہیں ہیں۔'
+          : 'Passwords do not match.',
+      );
       return;
     }
     if (!isOnline) {
-      showAppAlert(t('common.offline'), 'Password reset requires an internet connection.');
+      showAppAlert(
+        t('common.offline'),
+        lang === 'ur'
+          ? 'پاس ورڈ تبدیل کرنے کے لیے انٹرنیٹ ضروری ہے۔'
+          : 'Changing your password requires an internet connection.',
+      );
       return;
     }
     setResetBusy(true);
     try {
-      await invokeAdminResetPassword(profile.id, newPassword);
-      showAppAlert(t('common.confirm'), 'Password updated.');
+      await updateOwnPassword(newPassword);
+      showAppAlert(
+        t('common.confirm'),
+        lang === 'ur' ? 'پاس ورڈ کامیابی سے تبدیل ہو گیا۔' : 'Your password has been updated.',
+      );
       setResetOpen(false);
       setNewPassword('');
+      setConfirmPassword('');
+      setShowPw(false);
     } catch (err) {
       showAppAlert(t('common.errorGeneric'), err instanceof Error ? err.message : undefined);
     } finally {
@@ -65,8 +95,23 @@ export default function AdminMoreRoute() {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
     subtitle: string;
+    highlight?: boolean;
     onPress: () => void;
   }[] = [
+    ...(isSuperAdmin
+      ? [
+          {
+            icon: 'people-circle-outline' as const,
+            title: lang === 'ur' ? 'ایڈمنز کا انتظام (سپر ایڈمن)' : 'Manage Admins',
+            subtitle:
+              lang === 'ur'
+                ? 'نئے ایڈمن شامل کریں، پاس ورڈ ری سیٹ کریں یا رسائی معطل کریں'
+                : 'Add new admins, reset passwords, or revoke admin access',
+            highlight: true,
+            onPress: () => router.push('/(admin)/manage-admins' as Href),
+          },
+        ]
+      : []),
     {
       icon: 'archive-outline',
       title: t('history.title'),
@@ -114,13 +159,15 @@ export default function AdminMoreRoute() {
     },
     {
       icon: 'key-outline',
-      title: t('members.resetPassword'),
+      title: lang === 'ur' ? 'پاس ورڈ تبدیل کریں' : 'Change Password',
       subtitle:
         lang === 'ur'
-          ? 'اپنے ایڈمن لاگ ان کا پاس ورڈ تبدیل کریں'
-          : 'Update your admin login password',
+          ? 'اپنے لاگ ان کا پاس ورڈ تبدیل کریں'
+          : 'Update your login password anytime',
       onPress: () => {
         setNewPassword('');
+        setConfirmPassword('');
+        setShowPw(false);
         setResetOpen(true);
       },
     },
@@ -138,7 +185,7 @@ export default function AdminMoreRoute() {
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
     >
-      {/* Branded Heritage Emerald Admin Card */}
+      {/* Branded Heritage Emerald Admin / Super Admin Card */}
       <LinearGradient
         colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
         start={{ x: 0, y: 0 }}
@@ -149,10 +196,25 @@ export default function AdminMoreRoute() {
           <Image source={APP_LOGO} style={styles.heroLogo} resizeMode="cover" />
         </View>
         <View style={styles.heroCopy}>
-          <View style={styles.rolePill}>
-            <Ionicons name="shield-checkmark" size={12} color="#E5B95C" />
+          <View
+            style={[
+              styles.rolePill,
+              isSuperAdmin && {
+                backgroundColor: 'rgba(229, 185, 92, 0.22)',
+                borderWidth: 1,
+                borderColor: 'rgba(229, 185, 92, 0.55)',
+              },
+            ]}
+          >
+            <Ionicons name={isSuperAdmin ? 'ribbon' : 'shield-checkmark'} size={12} color="#E5B95C" />
             <Text style={styles.roleText}>
-              {lang === 'ur' ? 'ایڈمن' : 'Admin'}
+              {isSuperAdmin
+                ? lang === 'ur'
+                  ? 'سپر ایڈمن'
+                  : 'Super Admin'
+                : lang === 'ur'
+                  ? 'ایڈمن'
+                  : 'Admin'}
             </Text>
           </View>
           <Text style={styles.heroName} numberOfLines={1}>
@@ -173,8 +235,22 @@ export default function AdminMoreRoute() {
               pressed && { backgroundColor: colors.surfaceSubtle },
             ]}
           >
-            <View style={[styles.iconWrap, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
-              <Ionicons name={item.icon} size={20} color={colors.primary} />
+            <View
+              style={[
+                styles.iconWrap,
+                {
+                  backgroundColor: item.highlight
+                    ? 'rgba(229, 185, 92, 0.22)'
+                    : colors.primarySoft,
+                  borderRadius: radius.md,
+                },
+              ]}
+            >
+              <Ionicons
+                name={item.icon}
+                size={20}
+                color={item.highlight ? '#B68623' : colors.primary}
+              />
             </View>
             <View style={styles.menuCopy}>
               <Text style={[styles.menuTitle, { color: colors.text }]}>{item.title}</Text>
@@ -237,6 +313,7 @@ export default function AdminMoreRoute() {
 
       <Button variant="danger" label={t('auth.signOut')} onPress={handleSignOut} />
 
+      {/* Change Own Password Modal */}
       <Modal
         visible={resetOpen}
         transparent
@@ -245,16 +322,61 @@ export default function AdminMoreRoute() {
       >
         <View style={styles.modalBackdrop}>
           <Card style={styles.resetCard}>
-            <Text style={[styles.menuTitle, { color: colors.text }]}>
-              {t('members.resetPassword')}
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {lang === 'ur' ? 'پاس ورڈ تبدیل کریں' : 'Change Password'}
             </Text>
-            <TextField
-              label={t('auth.password')}
-              secureTextEntry
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Min 6 characters"
-            />
+
+            <View style={styles.pwFieldGroup}>
+              <Text style={[styles.pwLabel, { color: colors.textSecondary }]}>
+                {lang === 'ur' ? 'نیا پاس ورڈ' : 'New Password'}
+              </Text>
+              <View
+                style={[
+                  styles.pwInputWrap,
+                  { backgroundColor: colors.surfaceSubtle, borderColor: colors.border },
+                ]}
+              >
+                <TextInput
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Min 6 characters"
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.pwInput, { color: colors.text }]}
+                />
+                <Pressable onPress={() => setShowPw((v) => !v)} hitSlop={8}>
+                  <Ionicons
+                    name={showPw ? 'eye-off-outline' : 'eye-outline'}
+                    size={19}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.pwFieldGroup}>
+              <Text style={[styles.pwLabel, { color: colors.textSecondary }]}>
+                {lang === 'ur' ? 'نئے پاس ورڈ کی تصدیق' : 'Confirm Password'}
+              </Text>
+              <View
+                style={[
+                  styles.pwInputWrap,
+                  { backgroundColor: colors.surfaceSubtle, borderColor: colors.border },
+                ]}
+              >
+                <TextInput
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Re-enter new password"
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.pwInput, { color: colors.text }]}
+                />
+              </View>
+            </View>
+
             <View style={styles.segmentRow}>
               <Button
                 label={t('common.cancel')}
@@ -265,7 +387,7 @@ export default function AdminMoreRoute() {
               <Button
                 label={t('common.save')}
                 loading={resetBusy}
-                onPress={handleResetPassword}
+                onPress={handleChangeOwnPassword}
                 style={styles.flexBtn}
               />
             </View>
@@ -328,6 +450,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-  resetCard: { gap: 12 },
+  resetCard: { gap: 12, padding: 18 },
+  modalTitle: { fontSize: 17, fontWeight: '800' },
+  pwFieldGroup: { gap: 5 },
+  pwLabel: { fontSize: 12.5, fontWeight: '700' },
+  pwInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    gap: 8,
+  },
+  pwInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
   flexBtn: { flex: 1 },
 });

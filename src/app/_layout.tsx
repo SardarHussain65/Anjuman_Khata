@@ -63,7 +63,14 @@ function RootNavigator() {
   }, [hydrate]);
 
   const ready = langReady && !isHydrating;
-  const isAdmin = ready && Boolean(session && profile && profile.role === 'admin');
+  const isAdmin =
+    ready &&
+    Boolean(
+      session &&
+        profile &&
+        (profile.role === 'admin' || profile.role === 'super_admin') &&
+        profile.status === 'active',
+    );
 
   useEffect(() => {
     if (ready) {

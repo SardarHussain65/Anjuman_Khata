@@ -28,6 +28,7 @@ export default function AdminStackLayout() {
       <Stack.Screen name="history-viewer" options={{ title: t('history.title') }} />
       <Stack.Screen name="org-settings" options={{ title: t('settings.organization') }} />
       <Stack.Screen name="audit-log" options={{ title: t('settings.auditLog') }} />
+      <Stack.Screen name="manage-admins" options={{ title: 'Manage Admins' }} />
     </Stack>
   );
 }

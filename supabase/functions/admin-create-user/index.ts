@@ -1,7 +1,9 @@
 // Edge Function: admin-create-user
 // Runs strictly server-side with SUPABASE_SERVICE_ROLE_KEY.
-// Verifies the caller's JWT and checks profiles.role = 'admin' before creating
-// an Auth user + profile (+ optional initial tier) atomically, or resetting a password.
+// Verifies the caller's JWT and checks profiles.role in ('admin', 'super_admin'):
+//   - Any active admin/super_admin can create regular ('user') members or reset their own password.
+//   - ONLY active 'super_admin' can list admins, create new 'admin' accounts,
+//     reset another admin's password, or revoke/restore an admin account.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -10,12 +12,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface CreateMemberRequest {
-  action?: 'create' | 'reset_password';
+interface AdminEdgeRequest {
+  action?: 'create' | 'reset_password' | 'list_admins' | 'set_admin_status';
   // For create:
   email?: string;
   password?: string;
-  member_no?: number;
+  member_no?: number | null;
   full_name?: string;
   full_name_ur?: string | null;
   phone?: string | null;
@@ -29,9 +31,10 @@ interface CreateMemberRequest {
   tier_id?: string | null;
   effective_from?: string | null;
   tier_reason?: string | null;
-  // For reset_password:
+  // For reset_password / set_admin_status:
   user_id?: string;
   new_password?: string;
+  is_active?: boolean;
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -63,7 +66,7 @@ Deno.serve(async (req: Request) => {
   }
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  // 1. Verify caller identity & admin role using server-side service client
+  // 1. Verify caller identity & active admin/super_admin role using server-side service client
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     ...(serviceRoleKey.startsWith('eyJ')
@@ -82,7 +85,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: callerProfile, error: profileCheckError } = await adminClient
     .from('profiles')
-    .select('id, role, deleted_at')
+    .select('id, role, status, deleted_at')
     .eq('id', caller.id)
     .maybeSingle();
 
@@ -94,16 +97,29 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  if (!callerProfile || callerProfile.deleted_at || callerProfile.role !== 'admin') {
+  const isCallerSuperAdmin =
+    Boolean(callerProfile) &&
+    !callerProfile?.deleted_at &&
+    callerProfile?.status === 'active' &&
+    callerProfile?.role === 'super_admin';
+
+  const isCallerAdmin =
+    isCallerSuperAdmin ||
+    (Boolean(callerProfile) &&
+      !callerProfile?.deleted_at &&
+      callerProfile?.status === 'active' &&
+      callerProfile?.role === 'admin');
+
+  if (!isCallerAdmin) {
     return jsonResponse(
       {
-        error: `Forbidden: admin role required (caller=${caller.id}, found=${Boolean(callerProfile)}, role=${callerProfile?.role ?? 'none'})`,
+        error: `Forbidden: active admin role required (caller=${caller.id}, role=${callerProfile?.role ?? 'none'})`,
       },
       403,
     );
   }
 
-  let body: CreateMemberRequest;
+  let body: AdminEdgeRequest;
   try {
     body = await req.json();
   } catch {
@@ -112,10 +128,118 @@ Deno.serve(async (req: Request) => {
 
   const action = body.action ?? 'create';
 
-  // 3a. Admin password reset action
+  // 2a. List all admins & super_admins (Super Admin only)
+  if (action === 'list_admins') {
+    if (!isCallerSuperAdmin) {
+      return jsonResponse({ error: 'Forbidden: super_admin role required' }, 403);
+    }
+
+    const { data: adminProfiles, error: listErr } = await adminClient
+      .from('profiles')
+      .select('id, full_name, full_name_ur, phone, role, status, created_at')
+      .in('role', ['admin', 'super_admin'])
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true });
+
+    if (listErr) {
+      return jsonResponse({ error: listErr.message }, 500);
+    }
+
+    const { data: authUsersData } = await adminClient.auth.admin.listUsers({ perPage: 200 });
+    const emailById = new Map<string, string>();
+    for (const u of authUsersData?.users ?? []) {
+      if (u.email) emailById.set(u.id, u.email);
+    }
+
+    const admins = (adminProfiles ?? []).map((p) => ({
+      ...p,
+      email: emailById.get(p.id) ?? '',
+    }));
+
+    return jsonResponse({ admins });
+  }
+
+  // 2b. Revoke or re-enable an admin account (Super Admin only)
+  if (action === 'set_admin_status') {
+    if (!isCallerSuperAdmin) {
+      return jsonResponse({ error: 'Forbidden: super_admin role required' }, 403);
+    }
+
+    if (!body.user_id || typeof body.is_active !== 'boolean') {
+      return jsonResponse({ error: 'user_id and is_active (boolean) are required' }, 400);
+    }
+
+    if (body.user_id === caller.id) {
+      return jsonResponse({ error: 'You cannot revoke your own Super Admin account' }, 400);
+    }
+
+    const { data: targetProfile, error: targetErr } = await adminClient
+      .from('profiles')
+      .select('id, role, status')
+      .eq('id', body.user_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (targetErr || !targetProfile) {
+      return jsonResponse({ error: 'Target admin account not found' }, 404);
+    }
+
+    if (targetProfile.role === 'super_admin') {
+      return jsonResponse({ error: 'Super Admin accounts cannot be revoked here' }, 403);
+    }
+
+    const nextStatus = body.is_active ? 'active' : 'inactive';
+
+    const { error: banErr } = await adminClient.auth.admin.updateUserById(body.user_id, {
+      ban_duration: body.is_active ? 'none' : '876000h',
+    });
+
+    if (banErr) {
+      return jsonResponse({ error: banErr.message }, 400);
+    }
+
+    const { error: updateErr } = await adminClient
+      .from('profiles')
+      .update({ status: nextStatus, updated_by: caller.id })
+      .eq('id', body.user_id);
+
+    if (updateErr) {
+      return jsonResponse({ error: updateErr.message }, 400);
+    }
+
+    await adminClient.from('audit_log').insert({
+      actor_id: caller.id,
+      action: body.is_active ? 'SUPER_ADMIN_ENABLE_ADMIN' : 'SUPER_ADMIN_REVOKE_ADMIN',
+      table_name: 'profiles',
+      record_id: body.user_id,
+      old_data: { status: targetProfile.status },
+      new_data: { status: nextStatus },
+    });
+
+    return jsonResponse({ ok: true, user_id: body.user_id, status: nextStatus });
+  }
+
+  // 2c. Password reset action
   if (action === 'reset_password') {
     if (!body.user_id || !body.new_password || body.new_password.length < 6) {
       return jsonResponse({ error: 'user_id and new_password (min 6 chars) are required' }, 400);
+    }
+
+    // Normal admins can only reset their own password or non-admin users;
+    // resetting another admin's password requires super_admin.
+    if (body.user_id !== caller.id && !isCallerSuperAdmin) {
+      const { data: targetProfile } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', body.user_id)
+        .maybeSingle();
+
+      if (targetProfile?.role === 'admin' || targetProfile?.role === 'super_admin') {
+        return jsonResponse(
+          { error: 'Forbidden: only Super Admin can reset another admin password' },
+          403,
+        );
+      }
     }
 
     const { error: resetError } = await adminClient.auth.admin.updateUserById(body.user_id, {
@@ -138,11 +262,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true, user_id: body.user_id });
   }
 
-  // 3b. Atomic create Auth user + profile (+ optional initial tier)
+  // 2d. Atomic create Auth user + profile (+ optional initial tier)
   const fullName = body.full_name?.trim();
   const status = body.status ?? 'active';
   const role = body.role ?? 'user';
-  const memberNo = role === 'admin' ? (body.member_no ?? null) : body.member_no;
+
+  if (role === 'admin' && !isCallerSuperAdmin) {
+    return jsonResponse({ error: 'Forbidden: only Super Admin can create new Admins' }, 403);
+  }
+
+  const memberNo = role === 'admin' ? null : body.member_no;
 
   if (!fullName) {
     return jsonResponse({ error: 'full_name is required' }, 400);
@@ -162,6 +291,10 @@ Deno.serve(async (req: Request) => {
 
   if (!['user', 'admin'].includes(role)) {
     return jsonResponse({ error: 'Invalid role' }, 400);
+  }
+
+  if (role === 'admin' && (!body.email?.trim() || !body.password || body.password.length < 6)) {
+    return jsonResponse({ error: 'Email and password (min 6 chars) are required for an Admin account' }, 400);
   }
 
   if (body.personal_pledge != null && (!Number.isInteger(body.personal_pledge) || body.personal_pledge <= 0)) {
@@ -220,9 +353,20 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  if (role === 'admin') {
+    await adminClient.from('audit_log').insert({
+      actor_id: caller.id,
+      action: 'SUPER_ADMIN_CREATE_ADMIN',
+      table_name: 'profiles',
+      record_id: newUserId,
+      old_data: null,
+      new_data: { full_name: fullName, email, role: 'admin' },
+    });
+  }
+
   // Optional initial tier assignment (for active members)
   let createdTierAssignment = null;
-  if (status === 'active' && body.tier_id) {
+  if (role !== 'admin' && status === 'active' && body.tier_id) {
     const { data: tierRow, error: tierError } = await adminClient
       .from('member_tiers')
       .insert({
@@ -236,7 +380,6 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (tierError) {
-      // Roll back profile (with superuser hard-delete bypass not needed: keep clean via auth delete or return partial error)
       return jsonResponse(
         {
           error: `Profile created, but tier assignment failed: ${tierError.message}`,

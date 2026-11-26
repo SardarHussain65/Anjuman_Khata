@@ -33,7 +33,7 @@ export interface ProfileRow extends SyncBaseRow {
   designation: string | null;
   tag: string | null;
   status: MemberStatus;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'super_admin';
   personal_pledge: number | null;
   joined_on: string;
   notes: string | null;
