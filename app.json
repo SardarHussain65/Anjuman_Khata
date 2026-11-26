@@ -56,6 +56,15 @@
         "projectId": "1920d8ee-6c22-4eef-87bf-dd5bdb8cb005"
       }
     },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/1920d8ee-6c22-4eef-87bf-dd5bdb8cb005"
+    },
     "owner": "sardar_hussain"
   }
 }
