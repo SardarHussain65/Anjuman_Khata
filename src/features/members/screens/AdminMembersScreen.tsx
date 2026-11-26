@@ -217,6 +217,7 @@ export function AdminMembersScreen() {
         onClose={() => setFormOpen(false)}
         editingMember={editingMember}
         tiers={data?.tiers ?? []}
+        existingProfiles={data?.profiles ?? []}
         nextMemberNo={nextMemberNo}
       />
 

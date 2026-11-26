@@ -278,7 +278,11 @@ export async function runSync(options?: {
 
     // In passwordless read-only viewer mode (`anon`), skip pushing stale admin outbox items so pull never fails
     const authState = useAuthStore.getState();
-    const isAdminSession = Boolean(authState.session && authState.profile?.role === 'admin');
+    const isAdminSession = Boolean(
+      authState.session &&
+        (authState.profile?.role === 'admin' || authState.profile?.role === 'super_admin') &&
+        authState.profile?.status === 'active',
+    );
     const shouldPush =
       options?.allowPush !== undefined
         ? options.allowPush

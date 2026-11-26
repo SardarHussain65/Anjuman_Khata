@@ -14,9 +14,8 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/core/theme/ThemeProvider';
 import { formatPKR } from '@/core/money';
-import { formatMonthShort, getKarachiCurrentMonthStart } from '@/core/dates';
+import { getKarachiCurrentMonthStart } from '@/core/dates';
 import { useAppLanguage } from '@/core/i18n';
-import { ComplianceBadge } from '@/core/ui/Badge';
 import { EmptyState, LoadingState } from '@/core/ui/ScreenState';
 import { useRegisterSnapshot } from '@/data/db/queries';
 import { ContributionRow } from '@/data/db/types';
@@ -27,6 +26,13 @@ import {
   MemberFiscalYearSummary,
 } from '@/core/rules/compliance';
 import { PaymentSheetModal } from '@/features/payments/components/PaymentSheetModal';
+import {
+  LedgerMemberCard,
+  LedgerTableView,
+  LedgerViewMode,
+  MemberYearSheet,
+  ViewModeToggle,
+} from '@/features/ledger/components/LedgerViews';
 
 type LedgerFilter =
   | 'all'
@@ -35,10 +41,6 @@ type LedgerFilter =
   | 'unpaid_current'
   | 'non_earning'
   | string; // tier:<tierId>
-
-const STICKY_NAME_WIDTH = 136;
-const MONTH_COL_WIDTH = 66;
-const TOTAL_COL_WIDTH = 82;
 
 export function AdminLedgerScreen() {
   const { colors, radius, typography, isDark } = useTheme();
@@ -50,7 +52,11 @@ export function AdminLedgerScreen() {
   const [selectedFyId, setSelectedFyId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<LedgerFilter>('all');
+  const [viewMode, setViewMode] = useState<LedgerViewMode>('cards');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Member 12-month breakdown sheet
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   // Payment / Edit modal state
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -88,6 +94,11 @@ export function AdminLedgerScreen() {
       }),
     );
   }, [data, activeFy, currentMonth]);
+
+  const selectedSummary = useMemo(
+    () => (selectedMemberId ? allSummaries.find((s) => s.member.id === selectedMemberId) ?? null : null),
+    [allSummaries, selectedMemberId],
+  );
 
   const filteredSummaries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -161,10 +172,9 @@ export function AdminLedgerScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
       >
-        {/* Elevated Heritage Emerald Hero + Search & Filters (scrolls smoothly with the table) */}
-        <View style={[styles.topControls, { backgroundColor: colors.background }]}>
+        {/* Heritage Emerald Hero Card */}
         <LinearGradient
-          colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#093B2C']}
+          colors={isDark ? ['#144536', '#0A271E'] : ['#0F5D46', '#083729']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.heroCard, { borderRadius: radius.xl }]}
@@ -221,21 +231,30 @@ export function AdminLedgerScreen() {
             <View style={[styles.progressFill, { width: `${collectionPct}%` }]} />
           </View>
 
-          <View style={styles.summaryStrip}>
-            <View style={styles.stripPill}>
-              <Text style={styles.stripLabel}>{t('ledger.expected')}</Text>
-              <Text style={[styles.stripVal, typography.numeric]}>
+          <View style={styles.metricRow}>
+            <Pressable
+              onPress={() => setFilter('all')}
+              style={styles.metricTile}
+            >
+              <Text style={styles.metricLabel}>{t('members.title')}</Text>
+              <Text style={[styles.metricVal, typography.numeric]}>
+                {allSummaries.length}
+              </Text>
+            </Pressable>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>{t('ledger.expected')}</Text>
+              <Text style={[styles.metricVal, typography.numeric]}>
                 {formatPKR(totals.expected)}
               </Text>
             </View>
             <Pressable
-              style={styles.stripPill}
+              style={styles.metricTile}
               onPress={() => setFilter(filter === 'arrears' ? 'all' : 'arrears')}
             >
-              <Text style={styles.stripLabel}>{t('ledger.arrears')}</Text>
+              <Text style={styles.metricLabel}>{t('ledger.arrears')}</Text>
               <Text
                 style={[
-                  styles.stripVal,
+                  styles.metricVal,
                   typography.numeric,
                   { color: totals.arrears > 0 ? '#FCA5A5' : '#A7F3D0' },
                 ]}
@@ -246,25 +265,30 @@ export function AdminLedgerScreen() {
           </View>
         </LinearGradient>
 
-        <View
-          style={[
-            styles.searchBox,
-            { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg },
-          ]}
-        >
-          <Ionicons name="search" size={16} color={colors.textMuted} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t('ledger.searchPlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            style={[styles.searchInput, { color: colors.text }]}
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
+        {/* Search + Labeled Cards / Table View Toggle */}
+        <View style={styles.searchAndToggle}>
+          <View
+            style={[
+              styles.searchBox,
+              { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg },
+            ]}
+          >
+            <Ionicons name="search" size={16} color={colors.textMuted} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder={t('ledger.searchPlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              style={[styles.searchInput, { color: colors.text }]}
+            />
+            {search ? (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={17} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <ViewModeToggle value={viewMode} onChange={setViewMode} lang={lang} />
         </View>
 
         {/* Filter Chips */}
@@ -288,171 +312,51 @@ export function AdminLedgerScreen() {
                 style={[
                   styles.filterChip,
                   {
-                    backgroundColor: active ? colors.primarySoft : colors.background,
+                    backgroundColor: active ? colors.primary : colors.surface,
                     borderColor: active ? colors.primary : colors.border,
                     borderRadius: radius.pill,
                   },
                 ]}
               >
-                <Text style={[styles.filterChipText, { color: active ? colors.primary : colors.textSecondary }]}>
+                <Text style={[styles.filterChipText, { color: active ? '#FFFFFF' : colors.textSecondary }]}>
                   {chip.label}
                 </Text>
               </Pressable>
             );
           })}
         </ScrollView>
-      </View>
 
-      {/* Master Paper-Register Grid: Sticky Left Member Column + ONE Synchronized Horizontal Scroll */}
-      {filteredSummaries.length === 0 ? (
-        <EmptyState icon="grid-outline" />
-      ) : (
-        <View style={styles.splitTable}>
-            {/* Left Fixed Column: Header + Member Names + Footer */}
-            <View style={[styles.leftColumn, { borderEndColor: colors.borderStrong }]}>
-              <View style={[styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
-                <Text style={[styles.headerCellText, { color: colors.text }]}>
-                  {t('members.title')}
-                </Text>
-              </View>
-
-              {filteredSummaries.map((item) => {
-                const displayName =
-                  lang === 'ur' && item.member.full_name_ur
-                    ? item.member.full_name_ur
-                    : item.member.full_name;
-                const rowBadgeStatus =
-                  item.arrearsTotal > 0
-                    ? item.unpaidCount > 0
-                      ? 'unpaid'
-                      : 'short'
-                    : item.currentMonthCompliance?.status ?? null;
-                return (
-                  <View
-                    key={item.member.id}
-                    style={[styles.memberRowBox, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
-                  >
-                    <Text style={[styles.memberTitle, { color: colors.text }]} numberOfLines={1}>
-                      #{item.member.member_no} {displayName}
-                    </Text>
-                    <View style={styles.memberMetaRow}>
-                      {rowBadgeStatus ? (
-                        <ComplianceBadge status={rowBadgeStatus} compact />
-                      ) : null}
-                      {item.arrearsTotal > 0 ? (
-                        <Text style={[styles.arrearsPill, typography.numeric, { backgroundColor: colors.unpaidBg, color: colors.unpaidText }]}>
-                          -{item.arrearsTotal}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                );
-              })}
-
-              <View style={[styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
-                <Text style={[styles.footerLabel, { color: colors.primary }]}>
-                  {t('common.total')}
-                </Text>
-              </View>
-            </View>
-
-            {/* Right Synchronized Horizontal Scroll: Month Headers + All Member Cells + Monthly Totals */}
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View>
-                {/* Header Row */}
-                <View style={[styles.monthsHeaderRow, styles.headerRowBox, { backgroundColor: colors.surfaceSubtle, borderBottomColor: colors.borderStrong }]}>
-                  {fyMonths.map((m) => (
-                    <View key={m} style={styles.monthHeaderCell}>
-                      <Text style={[styles.headerCellText, { color: colors.textSecondary }]}>
-                        {formatMonthShort(m, lang)}
-                      </Text>
-                    </View>
-                  ))}
-                  <View style={styles.totalHeaderCell}>
-                    <Text style={[styles.headerCellText, { color: colors.primary }]}>
-                      {t('common.total')}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Member Rows */}
-                {filteredSummaries.map((item) => (
-                  <View
-                    key={item.member.id}
-                    style={[styles.monthsRow, styles.dataRowHeight, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
-                  >
-                    {item.months.map((cell) => {
-                      const bg =
-                        cell.status === 'met'
-                          ? colors.metBg
-                          : cell.status === 'short'
-                            ? colors.shortBg
-                            : cell.status === 'unpaid'
-                              ? colors.unpaidBg
-                              : cell.status === 'advance'
-                                ? colors.advanceBg
-                                : colors.exemptBg;
-                      const fg =
-                        cell.status === 'met'
-                          ? colors.metText
-                          : cell.status === 'short'
-                            ? colors.shortText
-                            : cell.status === 'unpaid'
-                              ? colors.unpaidText
-                              : cell.status === 'advance'
-                                ? colors.advanceText
-                                : colors.exemptText;
-
-                      return (
-                        <Pressable
-                          key={cell.periodStart}
-                          onPress={() =>
-                            openQuickCollect(
-                              item.member.id,
-                              cell.periodStart,
-                              cell.entries[0] ?? null,
-                            )
-                          }
-                          style={[styles.monthCell, { backgroundColor: bg }]}
-                        >
-                          <Text style={[styles.cellValue, typography.numeric, { color: fg }]}>
-                            {cell.paidAmount > 0 ? cell.paidAmount : '—'}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-
-                    <View style={[styles.totalCell, { backgroundColor: colors.surfaceSubtle }]}>
-                      <Text style={[styles.totalValue, typography.numeric, { color: colors.text }]}>
-                        {formatPKR(item.yearlyCharityTotal)}
-                      </Text>
-                      {item.arrearsTotal > 0 ? (
-                        <Text style={[styles.arrearsMini, typography.numeric, { color: colors.danger }]}>
-                          -{item.arrearsTotal}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-
-                {/* Footer Row */}
-                <View style={[styles.monthsHeaderRow, styles.footerRowBox, { backgroundColor: colors.primarySoft, borderTopColor: colors.primaryBorder }]}>
-                  {totals.perMonth.map((amt, idx) => (
-                    <View key={fyMonths[idx] ?? idx} style={styles.monthHeaderCell}>
-                      <Text style={[styles.footerNum, typography.numeric, { color: colors.primary }]}>
-                        {amt > 0 ? amt.toLocaleString() : '—'}
-                      </Text>
-                    </View>
-                  ))}
-                  <View style={styles.totalHeaderCell}>
-                    <Text style={[styles.footerNum, typography.numeric, { color: colors.primary }]}>
-                      {formatPKR(totals.collected)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </ScrollView>
+        {/* Member List: Spacious Cards (Default) OR Upgraded Register Table */}
+        {filteredSummaries.length === 0 ? (
+          <EmptyState icon="grid-outline" />
+        ) : viewMode === 'cards' ? (
+          <View style={styles.cardsList}>
+            {filteredSummaries.map((item) => (
+              <LedgerMemberCard
+                key={item.member.id}
+                item={item}
+                lang={lang}
+                currentMonth={currentMonth}
+                isAdmin
+                onPress={() => setSelectedMemberId(item.member.id)}
+                onQuickCollect={() => openQuickCollect(item.member.id, currentMonth, null)}
+              />
+            ))}
           </View>
+        ) : (
+          <LedgerTableView
+            summaries={filteredSummaries}
+            fyMonths={fyMonths}
+            perMonthTotals={totals.perMonth}
+            grandCollected={totals.collected}
+            currentMonth={currentMonth}
+            lang={lang}
+            isAdmin
+            onPressMember={(item) => setSelectedMemberId(item.member.id)}
+            onPressCell={(item, cell) =>
+              openQuickCollect(item.member.id, cell.periodStart, cell.entries[0] ?? null)
+            }
+          />
         )}
       </ScrollView>
 
@@ -468,6 +372,24 @@ export function AdminLedgerScreen() {
         <Ionicons name="add" size={24} color="#FFFFFF" />
         <Text style={styles.fabText}>{t('ledger.recordPayment')}</Text>
       </Pressable>
+
+      {/* Interactive 12-Month Breakdown Sheet (tap any month to collect/edit) */}
+      <MemberYearSheet
+        summary={selectedSummary}
+        fiscalYearLabel={activeFy?.label}
+        currentMonth={currentMonth}
+        lang={lang}
+        isAdmin
+        onClose={() => setSelectedMemberId(null)}
+        onPressMonth={(summary, cell) => {
+          setSelectedMemberId(null);
+          openQuickCollect(summary.member.id, cell.periodStart, cell.entries[0] ?? null);
+        }}
+        onQuickCollect={(summary) => {
+          setSelectedMemberId(null);
+          openQuickCollect(summary.member.id, currentMonth, null);
+        }}
+      />
 
       <PaymentSheetModal
         visible={sheetOpen}
@@ -488,15 +410,16 @@ export function AdminLedgerScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  topControls: {
+  gridScroll: { flex: 1 },
+  gridScrollContent: {
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: 8,
-    gap: 9,
+    paddingBottom: 104,
+    gap: 12,
   },
   heroCard: {
-    padding: 15,
-    gap: 9,
+    padding: 16,
+    gap: 10,
     elevation: 4,
     shadowColor: '#0C503C',
     shadowOpacity: 0.2,
@@ -526,9 +449,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   fyPillText: { fontSize: 12, fontWeight: '800' },
-  heroMainRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  heroMainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
   heroLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.78)' },
-  heroBigNum: { fontSize: 25, fontWeight: '800', color: '#FFFFFF', marginTop: 1 },
+  heroBigNum: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', marginTop: 1 },
   pctBadge: {
     backgroundColor: 'rgba(229, 185, 92, 0.22)',
     borderColor: 'rgba(229, 185, 92, 0.5)',
@@ -549,100 +476,40 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#E5B95C',
   },
+  metricRow: { flexDirection: 'row', gap: 8 },
+  metricTile: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  metricLabel: { fontSize: 10.5, fontWeight: '600', color: 'rgba(255,255,255,0.74)' },
+  metricVal: { fontSize: 13.5, fontWeight: '800', color: '#FFFFFF' },
+  searchAndToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBox: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
-    minHeight: 42,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    minHeight: 44,
   },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
-  summaryStrip: { flexDirection: 'row', gap: 8 },
-  stripPill: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  stripLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
-  stripVal: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
-  filterRow: { gap: 6 },
+  filterRow: { gap: 7 },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderWidth: 1,
   },
-  filterChipText: { fontSize: 12, fontWeight: '600' },
-  gridScroll: { flex: 1 },
-  gridScrollContent: { paddingHorizontal: 14, paddingBottom: 98 },
-  splitTable: {
-    flexDirection: 'row',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(12, 80, 60, 0.14)',
-  },
-  leftColumn: { width: STICKY_NAME_WIDTH, borderEndWidth: 1 },
-  headerRowBox: {
-    height: 38,
-    borderBottomWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  memberRowBox: {
-    height: 58,
-    paddingHorizontal: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    justifyContent: 'center',
-    gap: 4,
-  },
-  dataRowHeight: {
-    height: 58,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  footerRowBox: {
-    height: 44,
-    borderTopWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  headerCellText: { fontSize: 11, fontWeight: '700' },
-  monthsHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0 },
-  monthHeaderCell: { width: MONTH_COL_WIDTH + 4, alignItems: 'center', justifyContent: 'center' },
-  totalHeaderCell: { width: TOTAL_COL_WIDTH, alignItems: 'center', justifyContent: 'center' },
-  memberTitle: { fontSize: 12, fontWeight: '700' },
-  memberMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  arrearsPill: { fontSize: 10, fontWeight: '700', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
-  monthsRow: { flexDirection: 'row', alignItems: 'center' },
-  monthCell: {
-    width: MONTH_COL_WIDTH,
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 2,
-    borderRadius: 6,
-  },
-  cellValue: { fontSize: 12, fontWeight: '700' },
-  totalCell: {
-    width: TOTAL_COL_WIDTH,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  totalValue: { fontSize: 12, fontWeight: '800' },
-  arrearsMini: { fontSize: 10, fontWeight: '700' },
-  footerLabel: { fontSize: 12, fontWeight: '800' },
-  footerNum: { fontSize: 11, fontWeight: '800' },
+  filterChipText: { fontSize: 12, fontWeight: '700' },
+  cardsList: { gap: 10 },
   fab: {
     position: 'absolute',
     end: 16,
