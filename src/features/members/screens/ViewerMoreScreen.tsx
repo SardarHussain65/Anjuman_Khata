@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Image,
   Pressable,
@@ -16,6 +16,7 @@ import { switchLanguage, useAppLanguage } from '@/core/i18n';
 import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
+import { checkForOtaUpdateManually, getOtaMeta } from '@/core/updates/appUpdates';
 
 const APP_LOGO = require('../../../../assets/images/logo.png');
 
@@ -31,6 +32,8 @@ export function ViewerMoreScreen() {
   const themePref = useThemePreferenceStore((s) => s.preference);
   const setThemePref = useThemePreferenceStore((s) => s.setPreference);
   const setSyncDrawerOpen = useSyncStatusStore((s) => s.setDrawerOpen);
+  const otaMeta = getOtaMeta();
+  const [checkingOta, setCheckingOta] = useState(false);
 
   return (
     <ScrollView
@@ -126,6 +129,25 @@ export function ViewerMoreScreen() {
         variant="secondary"
         label={t('sync.drawerTitle')}
         onPress={() => setSyncDrawerOpen(true)}
+      />
+
+      <Button
+        variant="secondary"
+        loading={checkingOta}
+        label={
+          lang === 'ur'
+            ? `ایپ اپ ڈیٹ چیک کریں (v${otaMeta.appVersion})`
+            : `Check for App Updates (v${otaMeta.appVersion})`
+        }
+        onPress={async () => {
+          if (checkingOta) return;
+          setCheckingOta(true);
+          try {
+            await checkForOtaUpdateManually(lang);
+          } finally {
+            setCheckingOta(false);
+          }
+        }}
       />
     </ScrollView>
   );

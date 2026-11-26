@@ -7,7 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
-import { hydrateLanguagePreference } from '@/core/i18n';
+import { hydrateLanguagePreference, useAppLanguage } from '@/core/i18n';
+import { useOtaAutoCheck } from '@/core/updates/appUpdates';
 import { ThemeProvider, useTheme } from '@/core/theme/ThemeProvider';
 import { AppErrorBoundary } from '@/core/ui/ScreenState';
 import { AppDialogHost } from '@/core/ui/AppDialog';
@@ -50,6 +51,7 @@ function BrandedSplashOverlay() {
 
 function RootNavigator() {
   const { isDark } = useTheme();
+  const lang = useAppLanguage();
   const [langReady, setLangReady] = useState(false);
   const isHydrating = useAuthStore((s) => s.isHydrating);
   const session = useAuthStore((s) => s.session);
@@ -80,6 +82,8 @@ function RootNavigator() {
 
   // Sync runs in BOTH Read-Only Community Viewer mode (pull-only) and Admin mode (push + pull)
   useSyncScheduler(ready);
+  // Silently check for EAS OTA updates in release/preview builds when online
+  useOtaAutoCheck(ready, lang);
 
   return (
     <View style={styles.root}>

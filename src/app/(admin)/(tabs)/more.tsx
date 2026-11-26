@@ -20,6 +20,7 @@ import { Card } from '@/core/ui/Card';
 import { Button } from '@/core/ui/Button';
 import { showAppAlert } from '@/core/ui/AppDialog';
 import { updateOwnPassword } from '@/data/api/adminEdge';
+import { checkForOtaUpdateManually, getOtaMeta } from '@/core/updates/appUpdates';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useSyncStatusStore } from '@/data/sync/statusStore';
 
@@ -38,6 +39,8 @@ export default function AdminMoreRoute() {
   const isOnline = useSyncStatusStore((s) => s.isOnline);
 
   const isSuperAdmin = isSuperAdminRole(profile?.role);
+  const otaMeta = getOtaMeta();
+  const [checkingOta, setCheckingOta] = useState(false);
 
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -156,6 +159,24 @@ export default function AdminMoreRoute() {
           ? 'آف لائن محفوظ اندراجات، تازہ اپ ڈیٹ اور کیش صفائی'
           : 'Pending offline queue, quarantine inspector, manual sync',
       onPress: () => setSyncDrawerOpen(true),
+    },
+    {
+      icon: 'download-outline',
+      title: lang === 'ur' ? 'ایپ اپ ڈیٹ چیک کریں (OTA)' : 'Check for App Updates',
+      subtitle: checkingOta
+        ? lang === 'ur'
+          ? 'اپ ڈیٹ چیک ہو رہی ہے...'
+          : 'Checking for updates...'
+        : `v${otaMeta.appVersion}${otaMeta.channel ? ` · ${otaMeta.channel}` : ''}${otaMeta.shortUpdateId ? ` · ${otaMeta.shortUpdateId}` : ''}`,
+      onPress: async () => {
+        if (checkingOta) return;
+        setCheckingOta(true);
+        try {
+          await checkForOtaUpdateManually(lang);
+        } finally {
+          setCheckingOta(false);
+        }
+      },
     },
     {
       icon: 'key-outline',
