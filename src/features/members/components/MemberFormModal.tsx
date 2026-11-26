@@ -17,6 +17,7 @@ import { Button } from '@/core/ui/Button';
 import { showAppAlert } from '@/core/ui/AppDialog';
 import { TextField } from '@/core/ui/TextField';
 import { MemberStatus, ProfileRow, TierRow } from '@/data/db/types';
+import { computeSerialReorderPlan } from '@/core/rules/serialOrder';
 import { localInsert, localUpdate } from '@/data/sync/syncEngine';
 import { useAuthStore } from '@/features/auth/store/authStore';
 
@@ -25,6 +26,7 @@ interface MemberFormModalProps {
   onClose: () => void;
   editingMember?: ProfileRow | null;
   tiers: TierRow[];
+  existingProfiles?: ProfileRow[];
   nextMemberNo: number;
 }
 
@@ -43,6 +45,7 @@ function MemberFormModalInner({
   onClose,
   editingMember,
   tiers,
+  existingProfiles = [],
   nextMemberNo,
 }: MemberFormModalProps) {
   const { colors, radius } = useTheme();
@@ -102,6 +105,22 @@ function MemberFormModalInner({
 
     setSaving(true);
     try {
+      // Auto-shift conflicting serial numbers so the member lands at exact position `parsedNo`
+      // without duplicate serial numbers locally or during Supabase sync.
+      const shifts = computeSerialReorderPlan(
+        existingProfiles,
+        isEdit && editingMember ? editingMember.id : null,
+        parsedNo,
+      );
+      for (const shift of shifts) {
+        await localUpdate(
+          'profiles',
+          shift.id,
+          { member_no: shift.nextMemberNo },
+          { actorId: adminId },
+        );
+      }
+
       if (isEdit && editingMember) {
         await localUpdate(
           'profiles',
